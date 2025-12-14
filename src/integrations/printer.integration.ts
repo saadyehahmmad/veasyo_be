@@ -19,7 +19,6 @@ export class XPrinterIntegration {
     requestData: {
       tableNumber: string;
       requestType: string;
-      requestTypeName?: string;
       requestTypeNameEn?: string;
       requestTypeNameAr?: string;
       customNote?: string;
@@ -45,12 +44,10 @@ export class XPrinterIntegration {
         if (printerConfig.language === 'both') {
           // For both languages, use nameEn for English and nameAr for Arabic from database
           const englishData = { 
-            ...requestData, 
-            requestTypeName: requestData.requestTypeNameEn || requestData.requestTypeName || requestData.requestType 
+            ...requestData
           };
           const arabicData = { 
-            ...requestData, 
-            requestTypeName: requestData.requestTypeNameAr || requestData.requestTypeName || requestData.requestType 
+            ...requestData
           };
           const englishImage = await this.buildReceiptImage(printerConfig, englishData, 'en');
           const arabicImage = await this.buildReceiptImage(printerConfig, arabicData, 'ar');
@@ -58,8 +55,7 @@ export class XPrinterIntegration {
         } else {
           // For Arabic only, use nameAr from database
           const arabicData = { 
-            ...requestData, 
-            requestTypeName: requestData.requestTypeNameAr || requestData.requestTypeName || requestData.requestType 
+            ...requestData
           };
           const receiptImage = await this.buildReceiptImage(printerConfig, arabicData, 'ar');
           commands = [receiptImage];
@@ -67,8 +63,7 @@ export class XPrinterIntegration {
       } else {
         // For English only, use nameEn from database
         const englishData = { 
-          ...requestData, 
-          requestTypeName: requestData.requestTypeNameEn || requestData.requestTypeName || requestData.requestType 
+          ...requestData
         };
         const receiptCommands = this.buildReceiptCommands(printerConfig, englishData, 'en');
         commands = [receiptCommands];
@@ -102,7 +97,6 @@ export class XPrinterIntegration {
     data: {
       tableNumber: string;
       requestType: string;
-      requestTypeName?: string;
       requestTypeNameEn?: string;
       requestTypeNameAr?: string;
       customNote?: string;
@@ -175,7 +169,7 @@ export class XPrinterIntegration {
     commands.push(...this.textToBytes('REQUEST TYPE:'));
     commands.push(0x1b, 0x45, 0x00);
     commands.push(0x0a, 0x0a);
-    commands.push(...this.textToBytes(`* ${data.requestTypeName || data.requestType}`));
+    commands.push(...this.textToBytes(`* ${data.requestTypeNameEn || data.requestType}`));
     commands.push(0x0a, 0x0a);
 
     if (data.customNote) {
@@ -219,7 +213,6 @@ export class XPrinterIntegration {
     data: {
       tableNumber: string;
       requestType: string;
-      requestTypeName?: string;
       requestTypeNameEn?: string;
       requestTypeNameAr?: string;
       customNote?: string;
@@ -259,7 +252,6 @@ export class XPrinterIntegration {
     data: {
       tableNumber: string;
       requestType: string;
-      requestTypeName?: string;
       requestTypeNameEn?: string;
       requestTypeNameAr?: string;
       customNote?: string;
@@ -297,7 +289,7 @@ export class XPrinterIntegration {
     const requestTypeLabel = language === 'ar' ? 'نوع الطلب:' : 'REQUEST TYPE:';
     // Use request type name directly from database (already in correct language)
     // The database has nameEn and nameAr, so requestTypeName should already be the correct language version
-    const requestTypeName = data.requestTypeName || data.requestType;
+    const requestTypeName = language === 'en' ? (data.requestTypeNameEn || data.requestType) : (data.requestTypeNameAr || data.requestType);
     const noteLabel = language === 'ar' ? 'ملاحظة:' : 'NOTE:';
     const note = data.customNote 
       ? (language === 'ar' 
@@ -848,7 +840,6 @@ export class XPrinterIntegration {
     const testData = {
       tableNumber: 'TEST',
       requestType: 'test',
-      requestTypeName: 'Test Print',
       requestTypeNameEn: 'Test Print',
       requestTypeNameAr: 'طباعة تجريبية',
       timestamp: new Date(),
