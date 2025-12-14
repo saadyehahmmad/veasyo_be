@@ -33,8 +33,13 @@ export const tenants = pgTable(
     primaryColor: varchar('primary_color', { length: 7 }).default('#667eea'), // Hex color
     secondaryColor: varchar('secondary_color', { length: 7 }).default('#764ba2'),
     accentColor: varchar('accent_color', { length: 7 }).default('#f093fb'),
-    backgroundColor: varchar('background_color', { length: 7 }).default('#ffffff'),
     textColor: varchar('text_color', { length: 7 }).default('#333333'),
+    languageColor: varchar('language_color', { length: 7 }).default('#333333'),
+    // Background & Patterns
+    backgroundPattern: varchar('background_pattern', { length: 50 }),
+    gradientStartColor: varchar('gradient_start_color', { length: 7 }),
+    gradientEndColor: varchar('gradient_end_color', { length: 7 }),
+    gradientDirection: varchar('gradient_direction', { length: 50 }).default('to right'),
     customCss: text('custom_css'), // Optional custom CSS
     theme: jsonb('theme').default({}), // Additional theme settings (fonts, etc.)
     // Social Media Links

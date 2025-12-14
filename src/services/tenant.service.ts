@@ -98,8 +98,12 @@ export class TenantService {
       primaryColor?: string;
       secondaryColor?: string;
       accentColor?: string;
-      backgroundColor?: string;
       textColor?: string;
+      languageColor?: string;
+      backgroundPattern?: string;
+      gradientStartColor?: string;
+      gradientEndColor?: string;
+      gradientDirection?: string;
       customCss?: string;
       theme?: Record<string, unknown>;
       facebookUrl?: string;
@@ -150,8 +154,12 @@ export class TenantService {
         primaryColor: tenants.primaryColor,
         secondaryColor: tenants.secondaryColor,
         accentColor: tenants.accentColor,
-        backgroundColor: tenants.backgroundColor,
         textColor: tenants.textColor,
+        languageColor: tenants.languageColor,
+        backgroundPattern: tenants.backgroundPattern,
+        gradientStartColor: tenants.gradientStartColor,
+        gradientEndColor: tenants.gradientEndColor,
+        gradientDirection: tenants.gradientDirection,
         customCss: tenants.customCss,
         theme: tenants.theme,
         facebookUrl: tenants.facebookUrl,

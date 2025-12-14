@@ -29,6 +29,12 @@ CREATE TABLE IF NOT EXISTS tenants (
     accent_color VARCHAR(7) DEFAULT '#f093fb',
     background_color VARCHAR(7) DEFAULT '#ffffff',
     text_color VARCHAR(7) DEFAULT '#333333',
+    language_color VARCHAR(7) DEFAULT '#333333',
+    background_pattern VARCHAR(50),
+    gradient_type VARCHAR(20) DEFAULT 'solid',
+    gradient_start_color VARCHAR(7),
+    gradient_end_color VARCHAR(7),
+    gradient_direction VARCHAR(50) DEFAULT 'to right',
     custom_css TEXT,
     theme JSONB DEFAULT '{}',
     
@@ -206,6 +212,29 @@ CREATE INDEX IF NOT EXISTS idx_request_types_active ON request_types(tenant_id, 
 CREATE INDEX IF NOT EXISTS idx_request_types_order ON request_types(tenant_id, display_order);
 
 -- ============================================
+-- AUDIT LOGS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id UUID,
+    changes JSONB,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for audit_logs
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_id ON audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+
+-- ============================================
 -- TOKEN BLACKLIST TABLE (For logout/invalidation)
 -- ============================================
 CREATE TABLE IF NOT EXISTS token_blacklist (
@@ -240,31 +269,37 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Apply trigger to all tables with updated_at column
+DROP TRIGGER IF EXISTS update_tenants_updated_at ON tenants;
 CREATE TRIGGER update_tenants_updated_at
     BEFORE UPDATE ON tenants
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_tables_updated_at ON tables;
 CREATE TRIGGER update_tables_updated_at
     BEFORE UPDATE ON tables
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_service_requests_updated_at ON service_requests;
 CREATE TRIGGER update_service_requests_updated_at
     BEFORE UPDATE ON service_requests
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_subscriptions_updated_at ON subscriptions;
 CREATE TRIGGER update_subscriptions_updated_at
     BEFORE UPDATE ON subscriptions
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_request_types_updated_at ON request_types;
 CREATE TRIGGER update_request_types_updated_at
     BEFORE UPDATE ON request_types
     FOR EACH ROW
