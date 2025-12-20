@@ -18,6 +18,10 @@ export function createSocketIOServer(server: HTTPServer): Server<ClientToServerE
   const isDevelopment = config.nodeEnv !== 'production';
 
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
+    // Custom path for Socket.IO (default is '/socket.io')
+    // In production, if reverse proxy strips path prefix, this should be default
+    // If reverse proxy keeps path prefix, set via environment variable
+    path: process.env.SOCKET_IO_PATH || '/socket.io',
     cors: {
       // In development, allow all origins (including localhost)
       // In production, use configured CORS origin
