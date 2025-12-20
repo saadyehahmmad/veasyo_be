@@ -9,11 +9,6 @@ import { configureHealthChecks } from './health.config';
 import { configureMetrics } from './metrics.config';
 import { redisService } from './redis.service';
 import { loadAllActiveRequests, preloadCaches } from '../handlers/requestHandler';
-import { Server } from 'socket.io';
-import {
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from '../models/types';
 
 /**
  * Main server initialization and startup

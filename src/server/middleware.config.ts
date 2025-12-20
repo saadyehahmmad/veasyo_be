@@ -22,6 +22,7 @@ const CORS_ALLOWED_HEADERS = [
   'X-Tenant-Subdomain',
   REQUEST_ID_HEADER,
   'X-Tenant-Slug',
+  'Skip-Auth', // Allow Skip-Auth header for health checks and unauthenticated requests
 ];
 
 /**
