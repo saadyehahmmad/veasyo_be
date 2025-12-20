@@ -212,7 +212,7 @@ export class AuthService {
       ]);
 
       return true;
-    } catch (error) {
+    } catch {
       // If token verification fails, we can't blacklist but logout is still successful
       // (tokens are already invalid)
       return true;

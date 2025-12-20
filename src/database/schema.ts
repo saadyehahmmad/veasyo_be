@@ -37,6 +37,7 @@ export const tenants = pgTable(
     languageColor: varchar('language_color', { length: 7 }).default('#333333'),
     // Background & Patterns
     backgroundPattern: varchar('background_pattern', { length: 50 }),
+    backgroundColor: varchar('background_color', { length: 7 }).default('#ffffff'),
     gradientStartColor: varchar('gradient_start_color', { length: 7 }),
     gradientEndColor: varchar('gradient_end_color', { length: 7 }),
     gradientDirection: varchar('gradient_direction', { length: 50 }).default('to right'),

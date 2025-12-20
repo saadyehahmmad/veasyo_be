@@ -164,7 +164,7 @@ router.put('/', async (req: TenantRequest, res: Response) => {
       if (menuUrl.trim() !== '') {
         try {
           new URL(menuUrl);
-        } catch (error) {
+        } catch {
           return res.status(400).json({
             error: 'Invalid URL format',
             message: 'menuUrl must be a valid URL (e.g., https://www.example.com)',

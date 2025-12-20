@@ -124,7 +124,7 @@ export class TenantService {
       : currentSettings;
     
     // Remove settings from brandingData before update
-    const { settings, ...brandingFields } = brandingData;
+    const { ...brandingFields } = brandingData;
     
     const result = await db
       .update(tenants)

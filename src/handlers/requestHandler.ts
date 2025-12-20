@@ -1,21 +1,40 @@
 import { db } from '../database/db';
 import { serviceRequests, NewServiceRequest, tenants, tables, requestTypes } from '../database/schema';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { Server as SocketIOServer } from 'socket.io';
 import logger from '../utils/logger';
 import { IntegrationService } from '../services/integration.service';
 import { printerIntegration } from '../integrations/printer.integration';
 import { speakerIntegration } from '../integrations/speaker.integration';
+import { MultiTenantCacheManager, CacheManager } from '../utils/cache-manager';
 
-// In-memory cache for active requests (per tenant)
-// Structure: Map<tenantId, Map<requestId, ActiveRequest>>
-const activeRequestsCache = new Map<string, Map<string, ActiveRequest>>();
+// In-memory cache for active requests (per tenant) with TTL and size limits
+// Configuration:
+// - Max 1000 requests per tenant (prevents memory leaks)
+// - TTL: 1 hour (3600000ms) - requests should be completed within this time
+// - Cleanup interval: 5 minutes (300000ms)
+const activeRequestsCache = new MultiTenantCacheManager<ActiveRequest>(
+  1000, // Max 1000 requests per tenant
+  3600000, // 1 hour TTL
+  300000, // Cleanup every 5 minutes
+);
 
 // Cache for tenant ID resolution (slug -> UUID)
-const tenantIdCache = new Map<string, string>();
+// Configuration:
+// - Max 1000 entries (should cover all tenants)
+// - TTL: 24 hours (86400000ms) - tenant data rarely changes
+// - Cleanup interval: 1 hour (3600000ms)
+const tenantIdCache = new CacheManager<string>(1000, 86400000, 3600000);
 
 // Cache for table ID resolution (tenantId + tableNumber -> UUID)
-const tableIdCache = new Map<string, string>();
+// Configuration:
+// - Max 5000 entries (covers many tables across tenants)
+// - TTL: 24 hours (86400000ms) - table data rarely changes
+// - Cleanup interval: 1 hour (3600000ms)
+const tableIdCache = new CacheManager<string>(5000, 86400000, 3600000);
+
+// Export cache for monitoring
+export { activeRequestsCache };
 
 export interface ActiveRequest {
   id: string;
@@ -63,14 +82,9 @@ export async function handleNewRequest(data: {
     customNote: data.customNote,
   };
 
-  // 2. Store in memory for real-time access
-  if (!activeRequestsCache.has(data.tenantId)) {
-    activeRequestsCache.set(data.tenantId, new Map());
-  }
-  const tenantCache = activeRequestsCache.get(data.tenantId);
-  if (tenantCache) {
-    tenantCache.set(requestId, request);
-  }
+  // 2. Store in memory for real-time access with TTL
+  // TTL: 1 hour (requests should be completed within this time)
+  activeRequestsCache.set(data.tenantId, requestId, request, 3600000);
 
   // 3. Save to database (async, non-blocking)
   saveRequestToDatabase(request).catch((err) => {
@@ -127,8 +141,7 @@ export async function handleAcknowledge(
   tenantId: string,
 ): Promise<ActiveRequest | null> {
   // 1. Get from memory
-  const tenantRequests = activeRequestsCache.get(tenantId);
-  const request = tenantRequests?.get(requestId);
+  const request = activeRequestsCache.get(tenantId, requestId);
 
   if (!request) {
     logger.warn(`⚠️ Request ${requestId} not found in memory`);
@@ -138,6 +151,9 @@ export async function handleAcknowledge(
   // 2. Update in-memory state
   request.status = 'acknowledged';
   request.acknowledgedBy = userId || undefined;
+  
+  // Update cache with new status (refresh TTL)
+  activeRequestsCache.set(tenantId, requestId, request, 3600000);
 
   // 3. Update database (async)
   resolveTenantId(tenantId).then((tenantUuid) => {
@@ -195,8 +211,7 @@ export async function handleComplete(
   tenantId: string,
 ): Promise<ActiveRequest | null> {
   // 1. Get from memory
-  const tenantRequests = activeRequestsCache.get(tenantId);
-  const request = tenantRequests?.get(requestId);
+  const request = activeRequestsCache.get(tenantId, requestId);
 
   if (!request) {
     logger.warn(`⚠️ Request ${requestId} not found in memory`);
@@ -205,6 +220,9 @@ export async function handleComplete(
 
   // 2. Update in-memory state
   request.status = 'completed';
+  
+  // Update cache with new status
+  activeRequestsCache.set(tenantId, requestId, request, 3600000);
 
   // 3. Calculate duration and update database
   const durationSeconds = Math.floor((Date.now() - request.timestamp.getTime()) / 1000);
@@ -250,7 +268,7 @@ export async function handleComplete(
 
   // 5. Remove from memory after 5 seconds (allow time for UI updates)
   setTimeout(() => {
-    tenantRequests?.delete(requestId);
+    activeRequestsCache.delete(tenantId, requestId);
     logger.info(`🗑️ Request ${requestId} removed from memory`);
   }, 5000);
 
@@ -265,8 +283,7 @@ export async function handleCancel(
   requestId: string,
   tenantId: string,
 ): Promise<ActiveRequest | null> {
-  const tenantRequests = activeRequestsCache.get(tenantId);
-  const request = tenantRequests?.get(requestId);
+  const request = activeRequestsCache.get(tenantId, requestId);
 
   if (!request) {
     return null;
@@ -315,7 +332,7 @@ export async function handleCancel(
 
   // Remove from memory
   setTimeout(() => {
-    tenantRequests?.delete(requestId);
+    activeRequestsCache.delete(tenantId, requestId);
   }, 3000);
 
   logger.info(`❌ Request ${requestId} cancelled`);
@@ -326,11 +343,8 @@ export async function handleCancel(
  * Get active requests for a tenant (from memory)
  */
 export function getActiveRequests(tenantId: string): ActiveRequest[] {
-  const tenantRequests = activeRequestsCache.get(tenantId);
-  if (!tenantRequests) {
-    return [];
-  }
-  return Array.from(tenantRequests.values());
+  const cache = activeRequestsCache.getCache(tenantId);
+  return cache.values();
 }
 
 /**
@@ -373,12 +387,10 @@ export async function loadActiveRequestsFromDB(tenantId: string): Promise<number
         ),
       );
 
-    const tenantRequests = new Map<string, ActiveRequest>();
-
     requests.forEach((row) => {
       // tableId should be the UUID for proper reference
       // tableNumber is the display name (e.g., "T-01", "Table 5")
-      tenantRequests.set(row.request.id, {
+      const request: ActiveRequest = {
         id: row.request.id,
         tenantId: row.tenantSlug || row.request.tenantId,
         tableId: row.request.tableId, // Keep UUID as tableId
@@ -387,10 +399,10 @@ export async function loadActiveRequestsFromDB(tenantId: string): Promise<number
         timestamp: row.request.timestampCreated,
         customNote: row.request.customNote || undefined,
         acknowledgedBy: row.request.acknowledgedBy || undefined,
-      });
+      };
+      // Store with 1 hour TTL
+      activeRequestsCache.set(tenantId, row.request.id, request, 3600000);
     });
-
-    activeRequestsCache.set(tenantId, tenantRequests); // Use the original tenantId (slug) as key
 
     logger.info(`📥 Loaded ${requests.length} active requests for tenant ${tenantId}`);
     return requests.length;
@@ -443,9 +455,10 @@ export async function loadAllActiveRequests(): Promise<void> {
 
     // Populate cache
     requestsByTenant.forEach((requests, tenantId) => {
-      const tenantMap = new Map<string, ActiveRequest>();
-      requests.forEach((req) => tenantMap.set(req.id, req));
-      activeRequestsCache.set(tenantId, tenantMap);
+      requests.forEach((req) => {
+        // Store with 1 hour TTL
+        activeRequestsCache.set(tenantId, req.id, req, 3600000);
+      });
     });
 
     logger.info(
@@ -635,7 +648,12 @@ async function triggerIntegrations(
     }
 
     // Trigger printer if enabled and autoPrint is on
+    // Printer is configured in PC Agent's .env file (PRINTER_IP, PRINTER_PORT)
     if (integrations.printer?.enabled && integrations.printer.autoPrint) {
+      logger.debug(`Printing request for tenant ${tenantUuid}`, {
+        tableNumber,
+      });
+      
       printerIntegration
         .printRequest(integrations.printer, {
           tableNumber,
@@ -647,7 +665,7 @@ async function triggerIntegrations(
           restaurantName: tenant?.name,
           restaurantAddress: tenant?.facebookUrl || undefined, // Can be used for address if needed
           restaurantPhone: tenant?.instagramUrl || undefined, // Can be used for phone if needed
-        })
+        }, tenantUuid)
         .catch((err) => {
           logger.error('Error printing request:', err);
         });

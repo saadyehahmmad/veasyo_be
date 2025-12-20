@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 import { IntegrationService } from '../services/integration.service';
 import type { TenantRequest } from '../middleware/tenant';
 import logger from '../utils/logger';
@@ -94,30 +94,10 @@ router.put('/printer', async (req: TenantRequest, res: Response) => {
     // Validate required fields if enabled
     const printerData = req.body;
     if (printerData.enabled) {
-      if (!printerData.printerIp || !printerData.printerPort) {
-        return res.status(400).json({
-          error: ERROR_MESSAGES.INVALID_PRINTER_DATA,
-          message: 'Printer IP and Port are required when printer is enabled',
-        });
-      }
-
-      // Validate IP format (basic check)
-      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-      if (!ipRegex.test(printerData.printerIp)) {
-        return res.status(400).json({
-          error: ERROR_MESSAGES.INVALID_PRINTER_DATA,
-          message: 'Invalid IP address format',
-        });
-      }
-
-      // Validate port range
-      const port = parseInt(printerData.printerPort, 10);
-      if (isNaN(port) || port < 1 || port > 65535) {
-        return res.status(400).json({
-          error: ERROR_MESSAGES.INVALID_PRINTER_DATA,
-          message: 'Port must be between 1 and 65535',
-        });
-      }
+      // PC Agent is the ONLY method for printer communication
+      // Validate PC Agent IP and Port (required)
+      // PC Agent connects automatically via Socket.IO - no IP/Port configuration needed
+      // Printer is configured in PC Agent's .env file (PRINTER_IP, PRINTER_PORT)
 
       // Validate paper width
       if (printerData.paperWidth && printerData.paperWidth !== 58 && printerData.paperWidth !== 80) {
@@ -136,11 +116,9 @@ router.put('/printer', async (req: TenantRequest, res: Response) => {
       }
     }
 
-    // Filter allowed fields
+    // Filter allowed fields (PC Agent only)
     const allowedFields = [
       'enabled',
-      'printerIp',
-      'printerPort',
       'printerName',
       'paperWidth',
       'autoPrint',
@@ -440,7 +418,7 @@ router.post('/printer/test', async (req: TenantRequest, res: Response) => {
     }
 
     // Test print
-    await printerIntegration.testPrint(printer);
+    await printerIntegration.testPrint(printer, tenantId);
 
     res.json({
       success: true,
@@ -454,6 +432,9 @@ router.post('/printer/test', async (req: TenantRequest, res: Response) => {
     });
   }
 });
+
+// PC Agent test endpoint removed - PC Agent connects automatically via Socket.IO
+// Connection status can be checked via the PC Agent registry in the backend
 
 /**
  * @route POST /api/integrations/speaker/test

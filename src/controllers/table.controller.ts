@@ -2,9 +2,10 @@ import { Response } from 'express';
 import { TableService } from '../services/table.service';
 import { TenantRequest } from '../middleware/tenant';
 import { AuthRequest } from '../middleware/auth';
+import { Tenant } from '../database/schema';
 import logger from '../utils/logger';
 import * as QRCode from 'qrcode';
-import { createCanvas, loadImage } from 'canvas';
+import { createCanvas, loadImage, CanvasRenderingContext2D } from 'canvas';
 import JSZip from 'jszip';
 import { status } from "http-status";
 
@@ -700,12 +701,16 @@ export class TableController {
   private async _generateQRSticker(
     qrUrl: string,
     tableName: string,
-    tenant: any
+    tenant: Tenant
   ): Promise<Buffer> {
     const width = 600;
     const height = 800;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      throw new Error('Unable to get canvas context');
+    }
 
     // Extract colors with fallbacks
     const primaryColor = tenant.primaryColor || '#667eea';
@@ -790,7 +795,7 @@ export class TableController {
    * Helper method to draw rounded rectangle
    */
   private _roundRect(
-    ctx: any,
+    ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
     width: number,

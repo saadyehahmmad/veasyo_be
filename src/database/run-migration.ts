@@ -10,7 +10,6 @@ function splitSQLStatements(sql: string): string[] {
   const statements: string[] = [];
   let currentStatement = '';
   let inDollarQuote = false;
-  let dollarQuoteStart = '';
   let i = 0;
 
   while (i < sql.length) {
@@ -20,7 +19,6 @@ function splitSQLStatements(sql: string): string[] {
     // Check for start of dollar quote
     if (!inDollarQuote && char === '$' && nextChar === '$') {
       inDollarQuote = true;
-      dollarQuoteStart = '$$';
       currentStatement += '$$';
       i += 2;
       continue;
@@ -29,7 +27,6 @@ function splitSQLStatements(sql: string): string[] {
     // Check for end of dollar quote
     if (inDollarQuote && char === '$' && nextChar === '$') {
       inDollarQuote = false;
-      dollarQuoteStart = '';
       currentStatement += '$$';
       i += 2;
       continue;
@@ -99,7 +96,7 @@ async function runMigrations() {
             logger.info(`Skipping ${migrationFile} - tables already exist (${tableCount} tables found)`);
             continue;
           }
-        } catch (error) {
+        } catch {
           // If we can't check, proceed with migration
           logger.warn(`Could not check for existing tables, proceeding with ${migrationFile}`);
         }

@@ -233,14 +233,14 @@ Notes:
   /**
    * Gets validation schemas (not available in simple mode)
    */
-  getValidationSchemas(): Record<string, any> | null {
+  getValidationSchemas(): Record<string, unknown> | null {
     return null;
   }
 
   /**
    * Gets form engines (not available in simple mode)
    */
-  getFormEngines(): Record<string, any> | null {
+  getFormEngines(): Record<string, unknown> | null {
     return null;
   }
 
@@ -254,7 +254,7 @@ Notes:
   /**
    * Gets dynamic configuration (not available in simple mode)
    */
-  async getDynamicConfig(): Promise<Record<string, any> | null> {
+  async getDynamicConfig(): Promise<Record<string, unknown> | null> {
     return null;
   }
 

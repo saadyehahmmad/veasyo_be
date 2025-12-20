@@ -1,6 +1,6 @@
 import { eq, and, gte, lte, sql, desc, asc, count, avg } from 'drizzle-orm';
 import { db } from '../database/db';
-import { serviceRequests, tables, users, tenants, requestTypes } from '../database/schema';
+import { serviceRequests, tables, users } from '../database/schema';
 import logger from '../utils/logger';
 
 export interface AnalyticsSummary {
@@ -40,7 +40,7 @@ export class AnalyticsService {
       const { startDate, endDate } = filters;
 
       // Base query conditions
-      let conditions = [eq(serviceRequests.tenantId, tenantId)];
+      const conditions = [eq(serviceRequests.tenantId, tenantId)];
 
       if (startDate) {
         conditions.push(gte(serviceRequests.timestampCreated, startDate));
@@ -220,7 +220,7 @@ export class AnalyticsService {
     try {
       const { startDate, endDate } = filters;
 
-      let conditions = [eq(serviceRequests.tenantId, tenantId)];
+      const conditions = [eq(serviceRequests.tenantId, tenantId)];
 
       if (startDate) {
         conditions.push(gte(serviceRequests.timestampCreated, startDate));

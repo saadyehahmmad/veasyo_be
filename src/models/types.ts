@@ -30,7 +30,7 @@ export interface RequestTypeConfig {
 }
 
 export interface CallWaiterData {
-  tableId: number;
+  tableId: string | number; // Accept both string (UUID) and number for backward compatibility
   type?: RequestType;
   customNote?: string;
 }

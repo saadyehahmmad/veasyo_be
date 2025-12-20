@@ -27,7 +27,7 @@ const getDbConfig = () => {
 
   // Otherwise, use individual environment variables (fallback for local development)
   return {
-    host: process.env.DATABASE_HOST || 'localhost',
+    host: process.env.DATABASE_HOST,
     port: parseInt(process.env.DATABASE_PORT || '5433', 10),
     user: process.env.DATABASE_USER || 'postgres',
     password: process.env.DATABASE_PASSWORD || 'postgres',

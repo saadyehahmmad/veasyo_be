@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { AuthService } from '../services/auth.service';
 import { AuthRequest } from '../middleware/auth';
 import logger from '../utils/logger';

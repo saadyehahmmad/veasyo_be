@@ -9,7 +9,6 @@ import {
   requestTypes,
   serviceRequests,
   auditLogs,
-  tokenBlacklist,
 } from '../database/schema';
 import { eq, and } from 'drizzle-orm';
 import logger from '../utils/logger';

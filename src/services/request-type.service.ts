@@ -8,7 +8,7 @@ export class RequestTypeService {
   /**
    * Get dynamic form engines from LAS
    */
-  async getFormEngines(): Promise<Record<string, any> | null> {
+  async getFormEngines(): Promise<Record<string, unknown> | null> {
     try {
       const formEngines = licenseService.getFormEngines();
       if (!formEngines) {
@@ -25,7 +25,7 @@ export class RequestTypeService {
   /**
    * Get validation schemas from LAS
    */
-  async getValidationSchemas(): Promise<Record<string, any> | null> {
+  async getValidationSchemas(): Promise<Record<string, unknown> | null> {
     try {
       const schemas = licenseService.getValidationSchemas();
       if (!schemas) {
@@ -42,7 +42,7 @@ export class RequestTypeService {
   /**
    * Validate request data against LAS schemas
    */
-  async validateRequestData(requestType: string, data: any): Promise<{ valid: boolean; errors?: string[] }> {
+  async validateRequestData(requestType: string, data: Record<string, unknown>): Promise<{ valid: boolean; errors?: string[] }> {
     try {
       const schemas = await this.getValidationSchemas();
       if (!schemas || !schemas[requestType]) {
@@ -50,11 +50,11 @@ export class RequestTypeService {
         return { valid: true }; // Allow if no schema
       }
 
-      const schema = schemas[requestType];
+      const schema = schemas[requestType] as Record<string, { required?: boolean; type?: string; minLength?: number; maxLength?: number; }>;
       const errors: string[] = [];
 
       // Basic validation logic - can be enhanced
-      for (const [field, rules] of Object.entries(schema) as [string, any][]) {
+      for (const [field, rules] of Object.entries(schema)) {
         if (rules.required && (data[field] === undefined || data[field] === null || data[field] === '')) {
           errors.push(`${field} is required`);
         }
@@ -63,11 +63,11 @@ export class RequestTypeService {
           errors.push(`${field} must be of type ${rules.type}`);
         }
 
-        if (rules.minLength && data[field] && data[field].length < rules.minLength) {
+        if (rules.minLength && data[field] && typeof data[field] === 'string' && data[field].length < rules.minLength) {
           errors.push(`${field} must be at least ${rules.minLength} characters`);
         }
 
-        if (rules.maxLength && data[field] && data[field].length > rules.maxLength) {
+        if (rules.maxLength && data[field] && typeof data[field] === 'string' && data[field].length > rules.maxLength) {
           errors.push(`${field} must be at most ${rules.maxLength} characters`);
         }
       }

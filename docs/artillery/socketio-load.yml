@@ -1,0 +1,21 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 300
+      arrivalRate: 20 # start slow, ramp manually in CI to desired load
+  payload:
+    path: 
+    fields: []
+
+scenarios:
+  - engine: "socket.io"
+    flow:
+      - loop:
+          - emit: ["join", {"room": "tenant-a-table-{{ $randomInt(1,1000) }}"}]
+          - think: 1
+          - emit: ["message", {"room": "tenant-a-table-{{ $randomInt(1,1000) }}", "text": "hello"}]
+        count: 100
+
+# Notes:
+# - Adjust `arrivalRate` and `phases` to ramp up to target concurrent connections.
+# - For large-scale tests (2k+ concurrent sockets), run from multiple load generators.

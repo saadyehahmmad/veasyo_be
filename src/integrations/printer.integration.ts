@@ -1,7 +1,10 @@
-import { Socket } from 'net';
-import puppeteer from 'puppeteer-core';
+import fs from 'fs';
+import sharp from 'sharp';
+import puppeteer, { Browser, LaunchOptions } from 'puppeteer-core';
 import logger from '../utils/logger';
 import type { PrinterIntegration as PrinterConfig } from '../services/integration.service';
+import { pcAgentRegistry } from '../services/pc-agent-registry.service';
+import { randomUUID } from 'crypto';
 
 /**
  * XPrinter Network Printer Integration
@@ -9,8 +12,8 @@ import type { PrinterIntegration as PrinterConfig } from '../services/integratio
  */
 export class XPrinterIntegration {
   // Reuse browser instance for better performance
-  private browserInstance: any = null;
-  private browserLaunchPromise: Promise<any> | null = null;
+  private browserInstance: Browser | null = null;
+  private browserLaunchPromise: Promise<Browser> | null = null;
   /**
    * Print a service request receipt
    */
@@ -27,6 +30,7 @@ export class XPrinterIntegration {
       restaurantAddress?: string;
       restaurantPhone?: string;
     },
+    tenantId: string,
   ): Promise<void> {
     if (!printerConfig.enabled) {
       logger.debug('Printer integration is disabled, skipping print');
@@ -65,13 +69,14 @@ export class XPrinterIntegration {
         const englishData = { 
           ...requestData
         };
-        const receiptCommands = this.buildReceiptCommands(printerConfig, englishData, 'en');
+        const receiptCommands = this.buildReceiptCommands(printerConfig, englishData);
         commands = [receiptCommands];
       }
 
-      // Send each receipt to printer
+      // Send each receipt to printer via PC Agent (ONLY method)
+      // PC Agent connects to backend via Socket.IO (reverse connection)
       for (const commandBuffer of commands) {
-        await this.sendToPrinter(printerConfig, commandBuffer);
+        await this.sendToPcAgent(printerConfig, commandBuffer, tenantId);
         // Small delay between receipts if printing multiple
         if (commands.length > 1) {
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -79,7 +84,6 @@ export class XPrinterIntegration {
       }
 
       logger.info(`Printed request receipt for table ${requestData.tableNumber}`, {
-        printer: `${printerConfig.printerIp}:${printerConfig.printerPort}`,
         language: printerConfig.language,
         receiptsCount: commands.length,
       });
@@ -105,7 +109,6 @@ export class XPrinterIntegration {
       restaurantAddress?: string;
       restaurantPhone?: string;
     },
-    language: 'en' | 'ar' = 'en',
   ): Buffer {
     const commands: number[] = [];
 
@@ -502,7 +505,7 @@ export class XPrinterIntegration {
   /**
    * Get or create browser instance (reused for performance)
    */
-  private async getBrowser(): Promise<any> {
+  private async getBrowser(): Promise<Browser> {
     // If browser is already launching, wait for it
     if (this.browserLaunchPromise) {
       return this.browserLaunchPromise;
@@ -511,7 +514,7 @@ export class XPrinterIntegration {
     // If browser exists and is connected, return it
     if (this.browserInstance) {
       try {
-        const pages = await this.browserInstance.pages();
+        await this.browserInstance.pages();
         return this.browserInstance;
       } catch {
         // Browser was closed, reset it
@@ -533,7 +536,7 @@ export class XPrinterIntegration {
   /**
    * Launch browser instance
    */
-  private async launchBrowser(): Promise<any> {
+  private async launchBrowser(): Promise<Browser> {
     const possiblePaths = [
       process.env.PUPPETEER_EXECUTABLE_PATH,
       'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -547,7 +550,6 @@ export class XPrinterIntegration {
     let executablePath: string | undefined;
     for (const path of possiblePaths) {
       try {
-        const fs = require('fs');
         if (fs.existsSync(path)) {
           executablePath = path;
           break;
@@ -557,7 +559,7 @@ export class XPrinterIntegration {
       }
     }
 
-    const launchOptions: any = {
+    const launchOptions: LaunchOptions = {
       headless: true,
       args: [
         '--no-sandbox',
@@ -659,7 +661,6 @@ export class XPrinterIntegration {
     commands.push(0x1b, 0x40);
     
     try {
-      const sharp = require('sharp');
       const image = sharp(imageBuffer);
       const metadata = await image.metadata();
       
@@ -784,57 +785,126 @@ export class XPrinterIntegration {
   }
 
   /**
-   * Send commands to printer via network socket
+   * Send commands to PC Agent via Socket.IO
+   * PC Agent is the ONLY method for printer communication (Local Network Bridge)
+   * Uses reverse connection: PC Agent connects to backend, backend sends print jobs via Socket.IO
+   * 
+   * Architecture:
+   * Cloud/Web App (Backend) -> Socket.IO -> PC Agent -> TCP Socket -> LAN Printer
+   * 
+   * This enables SaaS-compatible printing where the server is on a different
+   * network than the customer's printer. The PC Agent runs on the customer's
+   * local network and connects to the backend via Socket.IO (reverse connection).
+   * 
+   * Benefits:
+   * - No Port Forwarding: PC Agent connects outbound (works through NAT/firewalls)
+   * - Scalable: PC Agent handles all printer connections locally
+   * - Reliable: Socket.IO provides automatic reconnection
+   * - Flexible: PC Agent can manage multiple printers
+   * - Secure: Local network isolation
    */
-  private async sendToPrinter(config: PrinterConfig, commands: Buffer): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const socket = new Socket();
-      let resolved = false;
+  private async sendToPcAgent(config: PrinterConfig, commands: Buffer, tenantId: string): Promise<void> {
+    // Check if PC Agent is connected for this tenant
+    const pcAgentSocket = pcAgentRegistry.getAgent(tenantId);
+    if (!pcAgentSocket) {
+      throw new Error(
+        `PC Agent is not connected for tenant: ${tenantId}. ` +
+        `Please ensure the PC Agent is running and connected to the backend.`
+      );
+    }
 
-      // Set timeout
-      socket.setTimeout(5000); // 5 second timeout
+    try {
+      // Convert ESC/POS buffer to base64 for Socket.IO transmission
+      const base64Data = commands.toString('base64');
+      
+      // Generate unique job ID for tracking
+      const jobId = randomUUID();
+      
+      logger.debug(`Sending print request to PC Agent via Socket.IO`, {
+        tenantId,
+        jobId,
+        dataLength: commands.length,
+        base64Length: base64Data.length,
+      });
+      
+      // Send print job via Socket.IO and wait for result
+      // PC Agent uses default printer from .env file
+      const result = await new Promise<{
+        success: boolean;
+        message: string;
+      }>((resolve, reject) => {
+        // Set timeout for print job (15 seconds)
+        const timeout = setTimeout(() => {
+          reject(new Error(`Print job timeout: PC Agent did not respond within 15 seconds`));
+        }, 15000);
 
-      socket.on('connect', () => {
-        logger.debug(`Connected to printer ${config.printerIp}:${config.printerPort}`);
-        socket.write(commands);
-        socket.end();
+        // Listen for print result
+        const resultHandler = (data: {
+          jobId: string;
+          success: boolean;
+          message: string;
+        }) => {
+          if (data.jobId === jobId) {
+            clearTimeout(timeout);
+            pcAgentSocket.off('pc-agent:print-result', resultHandler);
+            resolve(data);
+          }
+        };
+
+        pcAgentSocket.on('pc-agent:print-result', resultHandler);
+
+        // Send print job (PC Agent uses default printer from .env)
+        pcAgentSocket.emit('pc-agent:print-job', {
+          jobId,
+          text: base64Data,
+          format: 'base64',
+        });
       });
 
-      socket.on('close', () => {
-        if (!resolved) {
-          resolved = true;
-          resolve();
+      // Check result
+      if (!result.success) {
+        throw new Error(`PC Agent print job failed: ${result.message}`);
+      }
+
+      logger.info(`Print request sent successfully to PC Agent via Socket.IO`, {
+        tenantId,
+        jobId,
+        dataLength: commands.length,
+      });
+    } catch (error) {
+      // Enhanced error handling
+      if (error instanceof Error) {
+        // Check if it's a connection error
+        if (error.message.includes('not connected')) {
+          throw new Error(
+            `PC Agent is not connected for tenant: ${tenantId}. ` +
+            `Please ensure the PC Agent is running and connected to the backend.`
+          );
         }
-      });
-
-      socket.on('error', (error) => {
-        if (!resolved) {
-          resolved = true;
-          reject(error);
-        }
-      });
-
-      socket.on('timeout', () => {
-        socket.destroy();
-        if (!resolved) {
-          resolved = true;
-          reject(new Error('Printer connection timeout'));
-        }
-      });
-
-      // Connect to printer
-      socket.connect(config.printerPort, config.printerIp, () => {
-        logger.debug(`Connecting to printer ${config.printerIp}:${config.printerPort}`);
-      });
-    });
+        throw error;
+      }
+      
+      // Fallback for unknown error types
+      throw new Error(`Unexpected error communicating with PC Agent: ${String(error)}`);
+    }
   }
 
+
   /**
-   * Test printer connection
+   * Test printer connection via PC Agent
+   * PC Agent is the ONLY method for printer communication
    */
-  async testPrint(printerConfig: PrinterConfig): Promise<void> {
+  async testPrint(printerConfig: PrinterConfig, tenantId: string): Promise<void> {
     if (!printerConfig.enabled) {
       throw new Error('Printer integration is disabled');
+    }
+
+    // Check if PC Agent is connected
+    if (!pcAgentRegistry.isConnected(tenantId)) {
+      throw new Error(
+        `PC Agent is not connected for tenant: ${tenantId}. ` +
+        `Please ensure the PC Agent is running and connected to the backend.`
+      );
     }
 
     const testData = {
@@ -848,7 +918,7 @@ export class XPrinterIntegration {
       restaurantPhone: '+1234567890',
     };
 
-    await this.printRequest(printerConfig, testData);
+    await this.printRequest(printerConfig, testData, tenantId);
   }
 }
 
