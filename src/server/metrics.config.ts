@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { Server } from 'socket.io';
 import * as promClient from 'prom-client';
 import logger from '../utils/logger';
+import { config } from '../config/environment';
 import {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -9,11 +10,18 @@ import {
 
 /**
  * Configure Prometheus metrics
+ * Only enabled if ENABLE_METRICS=true in environment
  */
 export function configureMetrics(
   app: express.Application,
   io: Server<ClientToServerEvents, ServerToClientEvents>
 ): void {
+  // Check if metrics are enabled
+  if (!config.features.enableMetrics) {
+    logger.info('📊 Prometheus metrics disabled (ENABLE_METRICS=false)');
+    return;
+  }
+
   try {
     // Collect default metrics (CPU, memory, event loop, etc.)
     promClient.collectDefaultMetrics();

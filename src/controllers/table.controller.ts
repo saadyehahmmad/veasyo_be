@@ -715,7 +715,7 @@ export class TableController {
     // Extract colors with fallbacks
     const primaryColor = tenant.primaryColor || '#667eea';
     const secondaryColor = tenant.secondaryColor || '#764ba2';
-    const backgroundColor = tenant.backgroundColor || '#ffffff';
+    const backgroundColor = '#ffffff'; // Default white background
     const textColor = tenant.textColor || '#333333';
 
     // Draw gradient background

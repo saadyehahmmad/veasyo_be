@@ -151,28 +151,32 @@ export async function handleAcknowledge(
   // 2. Update in-memory state
   request.status = 'acknowledged';
   request.acknowledgedBy = userId || undefined;
+  const acknowledgedTimestamp = new Date();
   
   // Update cache with new status (refresh TTL)
   activeRequestsCache.set(tenantId, requestId, request, 3600000);
 
-  // 3. Update database (async)
-  resolveTenantId(tenantId).then((tenantUuid) => {
-    if (!tenantUuid) return;
+  // 3. Update database FIRST (synchronous to avoid race conditions)
+  try {
+    const tenantUuid = await resolveTenantId(tenantId);
+    if (tenantUuid) {
+      await db.update(serviceRequests)
+        .set({
+          status: 'acknowledged',
+          timestampAcknowledged: acknowledgedTimestamp,
+          acknowledgedBy: userId,
+          updatedAt: acknowledgedTimestamp,
+        })
+        .where(and(eq(serviceRequests.id, requestId), eq(serviceRequests.tenantId, tenantUuid)));
+      logger.debug(`✅ Request ${requestId} updated in database`);
+    }
+  } catch (err) {
+    logger.error('❌ Failed to update request in DB:', err);
+    // Don't broadcast if DB update failed
+    return request;
+  }
 
-    db.update(serviceRequests)
-      .set({
-        status: 'acknowledged',
-        timestampAcknowledged: new Date(),
-        acknowledgedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(serviceRequests.id, requestId), eq(serviceRequests.tenantId, tenantUuid)))
-      .catch((err) => {
-        logger.error('❌ Failed to update request in DB:', err);
-      });
-  });
-
-  // 4. Broadcast update
+  // 4. Broadcast update AFTER database is updated
   if (io) {
     // Convert to frontend-compatible format
     const frontendRequest = {
@@ -182,13 +186,13 @@ export async function handleAcknowledge(
       requestType: request.type,
       status: 'acknowledged',
       timestampCreated: request.timestamp,
-      timestampAcknowledged: new Date(),
+      timestampAcknowledged: acknowledgedTimestamp,
       timestampCompleted: null,
       acknowledgedBy: request.acknowledgedBy || null,
       customNote: request.customNote || null,
       durationSeconds: null,
       createdAt: request.timestamp,
-      updatedAt: new Date(),
+      updatedAt: acknowledgedTimestamp,
     };
 
     io.to(`tenant-${tenantId}-waiter`).emit('request_updated', frontendRequest);
@@ -209,6 +213,7 @@ export async function handleAcknowledge(
 export async function handleComplete(
   requestId: string,
   tenantId: string,
+  completedBy: 'waiter' | 'customer' = 'waiter',
 ): Promise<ActiveRequest | null> {
   // 1. Get from memory
   const request = activeRequestsCache.get(tenantId, requestId);
@@ -220,30 +225,35 @@ export async function handleComplete(
 
   // 2. Update in-memory state
   request.status = 'completed';
+  const completedTimestamp = new Date();
   
   // Update cache with new status
   activeRequestsCache.set(tenantId, requestId, request, 3600000);
 
-  // 3. Calculate duration and update database
+  // 3. Calculate duration and update database FIRST (synchronous to avoid race conditions)
   const durationSeconds = Math.floor((Date.now() - request.timestamp.getTime()) / 1000);
 
-  resolveTenantId(tenantId).then((tenantUuid) => {
-    if (!tenantUuid) return;
+  try {
+    const tenantUuid = await resolveTenantId(tenantId);
+    if (tenantUuid) {
+      await db.update(serviceRequests)
+        .set({
+          status: 'completed',
+          timestampCompleted: completedTimestamp,
+          completedBy,
+          durationSeconds,
+          updatedAt: completedTimestamp,
+        })
+        .where(and(eq(serviceRequests.id, requestId), eq(serviceRequests.tenantId, tenantUuid)));
+      logger.debug(`✅ Request ${requestId} completed in database with completedBy: ${completedBy}`);
+    }
+  } catch (err) {
+    logger.error('❌ Failed to complete request in DB:', err);
+    // Don't broadcast if DB update failed
+    return request;
+  }
 
-    db.update(serviceRequests)
-      .set({
-        status: 'completed',
-        timestampCompleted: new Date(),
-        durationSeconds,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(serviceRequests.id, requestId), eq(serviceRequests.tenantId, tenantUuid)))
-      .catch((err) => {
-        logger.error('❌ Failed to complete request in DB:', err);
-      });
-  });
-
-  // 4. Broadcast completion
+  // 4. Broadcast completion AFTER database is updated
   if (io) {
     // Convert to frontend-compatible format
     const frontendRequest = {
@@ -254,12 +264,12 @@ export async function handleComplete(
       status: 'completed',
       timestampCreated: request.timestamp,
       timestampAcknowledged: null,
-      timestampCompleted: new Date(),
+      timestampCompleted: completedTimestamp,
       acknowledgedBy: request.acknowledgedBy || null,
       customNote: request.customNote || null,
       durationSeconds: durationSeconds,
       createdAt: request.timestamp,
-      updatedAt: new Date(),
+      updatedAt: completedTimestamp,
     };
 
     io.to(`tenant-${tenantId}-waiter`).emit('request_updated', frontendRequest);
@@ -272,7 +282,7 @@ export async function handleComplete(
     logger.info(`🗑️ Request ${requestId} removed from memory`);
   }, 5000);
 
-  logger.info(`✅ Request ${requestId} completed (${durationSeconds}s)`);
+  logger.info(`✅ Request ${requestId} completed (${durationSeconds}s) by ${completedBy}`);
   return request;
 }
 
@@ -290,24 +300,28 @@ export async function handleCancel(
   }
 
   request.status = 'cancelled';
+  const cancelledTimestamp = new Date();
 
-  // Update database
-  resolveTenantId(tenantId).then((tenantUuid) => {
-    if (!tenantUuid) return;
+  // Update database FIRST (synchronous to avoid race conditions)
+  try {
+    const tenantUuid = await resolveTenantId(tenantId);
+    if (tenantUuid) {
+      await db.update(serviceRequests)
+        .set({
+          status: 'cancelled',
+          timestampCompleted: cancelledTimestamp,
+          updatedAt: cancelledTimestamp,
+        })
+        .where(and(eq(serviceRequests.id, requestId), eq(serviceRequests.tenantId, tenantUuid)));
+      logger.debug(`✅ Request ${requestId} cancelled in database`);
+    }
+  } catch (err) {
+    logger.error('❌ Failed to cancel request in DB:', err);
+    // Don't broadcast if DB update failed
+    return request;
+  }
 
-    db.update(serviceRequests)
-      .set({
-        status: 'cancelled',
-        timestampCompleted: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(serviceRequests.id, requestId), eq(serviceRequests.tenantId, tenantUuid)))
-      .catch((err) => {
-        logger.error('❌ Failed to cancel request in DB:', err);
-      });
-  });
-
-  // Broadcast cancellation
+  // Broadcast cancellation AFTER database is updated
   if (io) {
     // Convert to frontend-compatible format
     const frontendRequest = {
@@ -318,12 +332,12 @@ export async function handleCancel(
       status: 'cancelled',
       timestampCreated: request.timestamp,
       timestampAcknowledged: null,
-      timestampCompleted: new Date(),
+      timestampCompleted: cancelledTimestamp,
       acknowledgedBy: request.acknowledgedBy || null,
       customNote: request.customNote || null,
       durationSeconds: null,
       createdAt: request.timestamp,
-      updatedAt: new Date(),
+      updatedAt: cancelledTimestamp,
     };
 
     io.to(`tenant-${tenantId}-waiter`).emit('request_updated', frontendRequest);
@@ -465,7 +479,18 @@ export async function loadAllActiveRequests(): Promise<void> {
       `📥 Loaded ${requests.length} active requests across ${requestsByTenant.size} tenants`,
     );
   } catch (error) {
-    logger.error('❌ Failed to load active requests:', error);
+    const dbError = error as { code?: string; message?: string };
+    
+    if (dbError.code === '28P01') {
+      logger.error(
+        '❌ Database authentication failed. Please check your DATABASE_URL credentials in .env file',
+      );
+      logger.error('   Error: Invalid username or password');
+    } else if (dbError.code === 'ECONNREFUSED' || dbError.code === 'ENOTFOUND') {
+      logger.error('❌ Cannot connect to database. Please ensure PostgreSQL is running and DATABASE_URL is correct');
+    } else {
+      logger.error('❌ Failed to load active requests:', error);
+    }
   }
 }
 
@@ -721,6 +746,17 @@ export async function preloadCaches(): Promise<void> {
       `✅ Preloaded ${tenantResults.length} tenants and ${tableResults.length} tables into cache`,
     );
   } catch (error) {
-    logger.error('❌ Failed to preload caches:', error);
+    const dbError = error as { code?: string; message?: string };
+    
+    if (dbError.code === '28P01') {
+      logger.error(
+        '❌ Database authentication failed. Please check your DATABASE_URL credentials in .env file',
+      );
+      logger.error('   Error: Invalid username or password');
+    } else if (dbError.code === 'ECONNREFUSED' || dbError.code === 'ENOTFOUND') {
+      logger.error('❌ Cannot connect to database. Please ensure PostgreSQL is running and DATABASE_URL is correct');
+    } else {
+      logger.error('❌ Failed to preload caches:', error);
+    }
   }
 }

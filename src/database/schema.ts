@@ -37,7 +37,6 @@ export const tenants = pgTable(
     languageColor: varchar('language_color', { length: 7 }).default('#333333'),
     // Background & Patterns
     backgroundPattern: varchar('background_pattern', { length: 50 }),
-    backgroundColor: varchar('background_color', { length: 7 }).default('#ffffff'),
     gradientStartColor: varchar('gradient_start_color', { length: 7 }),
     gradientEndColor: varchar('gradient_end_color', { length: 7 }),
     gradientDirection: varchar('gradient_direction', { length: 50 }).default('to right'),
@@ -134,6 +133,7 @@ export const serviceRequests = pgTable(
     timestampAcknowledged: timestamp('timestamp_acknowledged', { withTimezone: true }),
     timestampCompleted: timestamp('timestamp_completed', { withTimezone: true }),
     acknowledgedBy: uuid('acknowledged_by').references(() => users.id, { onDelete: 'set null' }),
+    completedBy: varchar('completed_by', { length: 50 }), // 'waiter' or 'customer'
     durationSeconds: integer('duration_seconds'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -422,3 +422,35 @@ export type NewAuditLog = typeof auditLogs.$inferInsert;
 
 export type TokenBlacklist = typeof tokenBlacklist.$inferSelect;
 export type NewTokenBlacklist = typeof tokenBlacklist.$inferInsert;
+
+// ============================================
+// FEEDBACK TABLE (Customer Feedback)
+// ============================================
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    tableId: uuid('table_id')
+      .notNull()
+      .references(() => tables.id, { onDelete: 'cascade' }),
+    requestId: varchar('request_id', { length: 50 }).references(() => serviceRequests.id, { onDelete: 'set null' }),
+    rating: integer('rating').notNull(), // 1-5 stars
+    comments: text('comments'),
+    customerName: varchar('customer_name', { length: 255 }),
+    customerPhone: varchar('customer_phone', { length: 50 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    tenantIdIdx: index('idx_feedback_tenant_id').on(table.tenantId),
+    tableIdIdx: index('idx_feedback_table_id').on(table.tableId),
+    requestIdIdx: index('idx_feedback_request_id').on(table.requestId),
+    ratingIdx: index('idx_feedback_rating').on(table.rating),
+    createdAtIdx: index('idx_feedback_created_at').on(table.createdAt),
+  }),
+);
+
+export type Feedback = typeof feedback.$inferSelect;
+export type NewFeedback = typeof feedback.$inferInsert;

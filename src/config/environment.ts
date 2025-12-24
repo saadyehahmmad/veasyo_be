@@ -1,3 +1,5 @@
+import { validateEnv } from './env.validation';
+
 interface RedisConfig {
   host: string;
   port: number;
@@ -17,21 +19,36 @@ interface AppConfig {
   domainUrl: string;
   redis: RedisConfig;
   telegram: TelegramConfig;
+  features: {
+    enableMetrics: boolean;
+    enableSwagger: boolean;
+  };
 }
 
+// Validate environment variables on startup
+const env = validateEnv();
+
 export const config: AppConfig = {
-  port: process.env.PORT || 3000,
-  host: process.env.HOST || 'localhost', // Host to bind to (0.0.0.0 for network access)
-  nodeEnv: process.env.NODE_ENV || 'development',
-  corsOrigin: process.env.CORS_ORIGIN || '*',
-  domainUrl: process.env.DOMAIN_URL || 'localhost', // Base domain for QR code generation
+  port: env.PORT as number,
+  host: env.HOST as string,
+  nodeEnv: env.NODE_ENV as string,
+  corsOrigin: env.CORS_ORIGIN as string,
+  domainUrl: env.DOMAIN_URL as string,
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379', 10),
-    clusterNodes: process.env.REDIS_CLUSTER_NODES ? process.env.REDIS_CLUSTER_NODES.split(',').map((n) => n.trim()) : undefined,
+    host: env.REDIS_HOST as string,
+    port: env.REDIS_PORT as number,
+    clusterNodes: env.REDIS_CLUSTER_NODES 
+      ? (env.REDIS_CLUSTER_NODES as string).split(',').map((n: string) => n.trim()) 
+      : undefined,
   },
   telegram: {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-    adminChatIds: process.env.TELEGRAM_ADMIN_CHAT_IDS ? process.env.TELEGRAM_ADMIN_CHAT_IDS.split(',').map((id) => id.trim()) : [],
+    botToken: (env.TELEGRAM_BOT_TOKEN as string) || '',
+    adminChatIds: env.TELEGRAM_ADMIN_CHAT_IDS 
+      ? (env.TELEGRAM_ADMIN_CHAT_IDS as string).split(',').map((id: string) => id.trim()) 
+      : [],
+  },
+  features: {
+    enableMetrics: env.ENABLE_METRICS as boolean,
+    enableSwagger: env.ENABLE_SWAGGER as boolean,
   },
 };

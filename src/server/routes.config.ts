@@ -19,6 +19,7 @@ import serviceRequestRoutes from '../routes/service-request.routes';
 import brandingRoutes from '../routes/branding.routes';
 import requestTypeRoutes from '../routes/request-type.routes';
 import integrationsRoutes from '../routes/integrations.routes';
+import feedbackRoutes from '../routes/feedback.routes';
 
 /**
  * Configure and register all API routes
@@ -191,5 +192,6 @@ export function configureRoutes(
   app.use('/api/branding', licenseCheckMiddleware, extractTenant, brandingRoutes);
   app.use('/api/request-types', licenseCheckMiddleware, requestTypeRoutes);
   app.use('/api/integrations', licenseCheckMiddleware, extractTenant, integrationsRoutes);
+  app.use('/api/feedback', licenseCheckMiddleware, feedbackRoutes); // Feedback routes (public POST, protected GET/DELETE)
 }
 

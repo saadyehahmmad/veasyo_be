@@ -4,6 +4,24 @@ import path from 'path';
 import logger from '../utils/logger';
 
 /**
+ * Remove SQL comments from a statement
+ */
+function removeComments(sql: string): string {
+  const lines = sql.split('\n');
+  const filteredLines = lines
+    .map(line => {
+      // Remove inline comments
+      const commentIndex = line.indexOf('--');
+      if (commentIndex !== -1) {
+        return line.substring(0, commentIndex);
+      }
+      return line;
+    })
+    .filter(line => line.trim().length > 0);
+  return filteredLines.join('\n').trim();
+}
+
+/**
  * Split SQL into individual statements, handling PostgreSQL dollar quoting
  */
 function splitSQLStatements(sql: string): string[] {
@@ -42,9 +60,9 @@ function splitSQLStatements(sql: string): string[] {
     // Check for semicolon outside of quotes
     if (char === ';') {
       currentStatement += char;
-      const trimmed = currentStatement.trim();
-      if (trimmed && !trimmed.startsWith('--')) {
-        statements.push(trimmed);
+      const cleaned = removeComments(currentStatement);
+      if (cleaned) {
+        statements.push(cleaned);
       }
       currentStatement = '';
       i++;
@@ -56,9 +74,9 @@ function splitSQLStatements(sql: string): string[] {
   }
 
   // Add any remaining statement
-  const trimmed = currentStatement.trim();
-  if (trimmed && !trimmed.startsWith('--')) {
-    statements.push(trimmed);
+  const cleaned = removeComments(currentStatement);
+  if (cleaned) {
+    statements.push(cleaned);
   }
 
   return statements;

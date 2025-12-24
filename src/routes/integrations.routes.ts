@@ -23,9 +23,23 @@ const integrationService = new IntegrationService();
 router.use(authenticate);
 
 /**
- * @route GET /api/integrations
- * @desc Get all integration settings for current tenant
- * @access Authenticated users
+ * @swagger
+ * /api/integrations:
+ *   get:
+ *     summary: Get all integrations
+ *     description: Get all integration settings for current tenant
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Integration settings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/', async (req: TenantRequest, res: Response) => {
   try {
@@ -51,9 +65,19 @@ router.get('/', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route GET /api/integrations/printer
- * @desc Get printer integration settings
- * @access Authenticated users
+ * @swagger
+ * /api/integrations/printer:
+ *   get:
+ *     summary: Get printer integration
+ *     description: Get printer integration settings
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Printer integration settings
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/printer', async (req: TenantRequest, res: Response) => {
   try {
@@ -77,9 +101,38 @@ router.get('/printer', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route PUT /api/integrations/printer
- * @desc Update printer integration settings
- * @access Authenticated users (admin/superadmin)
+ * @swagger
+ * /api/integrations/printer:
+ *   put:
+ *     summary: Update printer integration
+ *     description: Update printer integration settings (admin, superadmin only)
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               enabled:
+ *                 type: boolean
+ *               printerName:
+ *                 type: string
+ *               paperWidth:
+ *                 type: integer
+ *                 enum: [58, 80]
+ *               language:
+ *                 type: string
+ *                 enum: [en, ar, both]
+ *     responses:
+ *       200:
+ *         description: Printer integration updated
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.put('/printer', async (req: TenantRequest, res: Response) => {
   try {
@@ -150,9 +203,19 @@ router.put('/printer', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route GET /api/integrations/speaker
- * @desc Get speaker integration settings
- * @access Authenticated users
+ * @swagger
+ * /api/integrations/speaker:
+ *   get:
+ *     summary: Get speaker integration
+ *     description: Get speaker integration settings
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Speaker integration settings
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/speaker', async (req: TenantRequest, res: Response) => {
   try {
@@ -176,9 +239,38 @@ router.get('/speaker', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route PUT /api/integrations/speaker
- * @desc Update speaker integration settings
- * @access Authenticated users (admin/superadmin)
+ * @swagger
+ * /api/integrations/speaker:
+ *   put:
+ *     summary: Update speaker integration
+ *     description: Update speaker integration settings (admin, superadmin only)
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               enabled:
+ *                 type: boolean
+ *               speakerIp:
+ *                 type: string
+ *               speakerPort:
+ *                 type: integer
+ *               volume:
+ *                 type: integer
+ *                 minimum: 0
+ *                 maximum: 100
+ *     responses:
+ *       200:
+ *         description: Speaker integration updated
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.put('/speaker', async (req: TenantRequest, res: Response) => {
   try {
@@ -281,9 +373,19 @@ router.put('/speaker', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route GET /api/integrations/webhook
- * @desc Get webhook integration settings
- * @access Authenticated users
+ * @swagger
+ * /api/integrations/webhook:
+ *   get:
+ *     summary: Get webhook integration
+ *     description: Get webhook integration settings
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Webhook integration settings
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/webhook', async (req: TenantRequest, res: Response) => {
   try {
@@ -307,9 +409,35 @@ router.get('/webhook', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route PUT /api/integrations/webhook
- * @desc Update webhook integration settings
- * @access Authenticated users (admin/superadmin)
+ * @swagger
+ * /api/integrations/webhook:
+ *   put:
+ *     summary: Update webhook integration
+ *     description: Update webhook integration settings (admin, superadmin only)
+ *     tags: [Integrations]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               enabled:
+ *                 type: boolean
+ *               webhookUrl:
+ *                 type: string
+ *                 format: uri
+ *               secretKey:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Webhook integration updated
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.put('/webhook', async (req: TenantRequest, res: Response) => {
   try {

@@ -1,174 +1,155 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { ServiceRequestService } from '../services/service-request.service';
 import { handleAcknowledge, handleComplete } from '../handlers/requestHandler';
 import { TenantRequest } from '../middleware/tenant';
-import logger from '../utils/logger';
-import { status } from "http-status";
-// Error messages
-const ERROR_MESSAGES = {
-  TENANT_ID_REQUIRED: 'Tenant ID is required',
-  SERVICE_REQUEST_NOT_FOUND: 'Service request not found',
-  FAILED_TO_GET_REQUESTS: 'Failed to get service requests',
-  FAILED_TO_GET_REQUEST: 'Failed to get service request',
-  FAILED_TO_CREATE_REQUEST: 'Failed to create service request',
-  FAILED_TO_UPDATE_REQUEST: 'Failed to update service request',
-  FAILED_TO_DELETE_REQUEST: 'Failed to delete service request',
-  FAILED_TO_ACKNOWLEDGE: 'Failed to acknowledge service request',
-  FAILED_TO_COMPLETE: 'Failed to complete service request'
-} as const;
+import { 
+  NotFoundError, 
+  BadRequestError 
+} from '../errors/AppError';
+import { GetServiceRequestsQuery } from '../validators/service-request.validator';
 
 const serviceRequestService = new ServiceRequestService();
 export class ServiceRequestController {
   /**
    * Get all service requests for the tenant with pagination, filtering, and sorting
    */
-  async getAllServiceRequests(req: TenantRequest, res: Response) {
+  async getAllServiceRequests(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
-      const {
-        page = 1,
-        limit = 10,
-        status: statusFilter,
-        type,
-        tableId,
-        sortBy = 'timestampCreated',
-        sortOrder = 'desc',
-      } = req.query;
+
+      // Query is validated by middleware, so we can safely cast it to the validated type
+      const query = req.query as unknown as GetServiceRequestsQuery;
 
       const options = {
-        page: parseInt(page as string, 10),
-        limit: parseInt(limit as string, 10),
+        page: query.page || 1,
+        limit: query.limit || 10,
         filters: {
-          status: statusFilter as string,
-          type: type as string,
-          tableId: tableId as string,
+          status: query.status,
+          type: query.type,
+          tableId: query.tableId,
         },
         sort: {
-          by: sortBy as string,
-          order: sortOrder as 'asc' | 'desc',
+          by: query.sortBy || 'timestampCreated',
+          order: query.sortOrder || ('desc' as 'asc' | 'desc'),
         },
       };
 
       const result = await serviceRequestService.getServiceRequestsWithPagination(
-        tenantId,
+        req.tenantId,
         options,
       );
       res.json(result);
     } catch (error) {
-      logger.error('Error getting service requests:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: ERROR_MESSAGES.FAILED_TO_GET_REQUESTS });
+      next(error);
     }
   }
 
   /**
    * Get service request by ID
    */
-  async getServiceRequestById(req: TenantRequest, res: Response) {
+  async getServiceRequestById(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
 
       const request = await serviceRequestService.getServiceRequestById(id);
 
-      if (request?.tenantId !== tenantId) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+      if (!request || request.tenantId !== req.tenantId) {
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       res.json(request);
     } catch (error) {
-      logger.error('Error getting service request:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: ERROR_MESSAGES.FAILED_TO_GET_REQUEST });
+      next(error);
     }
   }
 
   /**
    * Create new service request
    */
-  async createServiceRequest(req: TenantRequest, res: Response) {
+  async createServiceRequest(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
+
       const requestData = req.body;
 
       const request = await serviceRequestService.createServiceRequest({
         ...requestData,
-        tenantId,
+        tenantId: req.tenantId,
       });
-      res.status(status.CREATED).json(request);
+      
+      res.status(201).json(request);
     } catch (error) {
-      logger.error('Error creating service request:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: ERROR_MESSAGES.FAILED_TO_CREATE_REQUEST });
+      next(error);
     }
   }
 
   /**
    * Update service request
    */
-  async updateServiceRequest(req: TenantRequest, res: Response) {
+  async updateServiceRequest(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
+
       const updates = req.body;
 
       // First check if the request belongs to the tenant
       const existingRequest = await serviceRequestService.getServiceRequestById(id);
-      if (existingRequest?.tenantId !== tenantId) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+      if (!existingRequest || existingRequest.tenantId !== req.tenantId) {
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       const request = await serviceRequestService.updateServiceRequest(id, updates);
 
       if (!request) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       res.json(request);
     } catch (error) {
-      logger.error('Error updating service request:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: 'Failed to update service request' });
+      next(error);
     }
   }
 
   /**
    * Acknowledge service request
    */
-  async acknowledgeServiceRequest(req: TenantRequest, res: Response) {
+  async acknowledgeServiceRequest(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
+
       const { acknowledgedBy } = req.body;
 
       // First check if the request belongs to the tenant
       const existingRequest = await serviceRequestService.getServiceRequestById(id);
-      if (existingRequest?.tenantId !== tenantId) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+      if (!existingRequest || existingRequest.tenantId !== req.tenantId) {
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       if (!acknowledgedBy) {
-        return res.status(status.BAD_REQUEST).json({ error: 'acknowledgedBy is required' });
+        throw new BadRequestError('acknowledgedBy is required', 'ACKNOWLEDGED_BY_REQUIRED');
       }
 
       const request = await serviceRequestService.acknowledgeServiceRequest(id, acknowledgedBy);
 
+      // Broadcast acknowledgment via Socket.IO (non-blocking)
       try {
         const tenantSlug = req.tenant?.slug || req.tenantId;
         if (tenantSlug) {
           handleAcknowledge(id, acknowledgedBy, tenantSlug).catch(() => {
-            /* ignore */
+            /* ignore - don't block response on broadcast errors */
           });
         }
       } catch {
@@ -176,41 +157,40 @@ export class ServiceRequestController {
       }
 
       if (!request) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       res.json(request);
     } catch (error) {
-      logger.error('Error acknowledging service request:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: ERROR_MESSAGES.FAILED_TO_ACKNOWLEDGE });
+      next(error);
     }
   }
 
   /**
    * Complete service request
    */
-  async completeServiceRequest(req: TenantRequest, res: Response) {
+  async completeServiceRequest(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
 
       // First check if the request belongs to the tenant
       const existingRequest = await serviceRequestService.getServiceRequestById(id);
-      if (existingRequest?.tenantId !== tenantId) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+      if (!existingRequest || existingRequest.tenantId !== req.tenantId) {
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       const request = await serviceRequestService.completeServiceRequest(id);
 
+      // Broadcast completion via Socket.IO (non-blocking)
       try {
         const tenantSlug = req.tenant?.slug || req.tenantId;
         if (tenantSlug) {
           // Notify socket-side handler so waiter/table rooms receive status update
           handleComplete(id, tenantSlug).catch(() => {
-            /* ignore */
+            /* ignore - don't block response on broadcast errors */
           });
         }
       } catch {
@@ -218,60 +198,56 @@ export class ServiceRequestController {
       }
 
       if (!request) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       res.json(request);
     } catch (error) {
-      logger.error('Error completing service request:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: ERROR_MESSAGES.FAILED_TO_COMPLETE });
+      next(error);
     }
   }
 
   /**
    * Delete service request
    */
-  async deleteServiceRequest(req: TenantRequest, res: Response) {
+  async deleteServiceRequest(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
 
       // First check if the request belongs to the tenant
       const existingRequest = await serviceRequestService.getServiceRequestById(id);
-      if (existingRequest?.tenantId !== tenantId) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+      if (!existingRequest || existingRequest.tenantId !== req.tenantId) {
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
       const deleted = await serviceRequestService.deleteServiceRequest(id);
 
       if (!deleted) {
-        return res.status(status.NOT_FOUND).json({ error: ERROR_MESSAGES.SERVICE_REQUEST_NOT_FOUND });
+        throw new NotFoundError('Service request not found', 'SERVICE_REQUEST_NOT_FOUND');
       }
 
-      res.status(status.NO_CONTENT).send();
+      res.status(204).send();
     } catch (error) {
-      logger.error('Error deleting service request:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: 'Failed to delete service request' });
+      next(error);
     }
   }
 
   /**
    * Get analytics
    */
-  async getAnalytics(req: TenantRequest, res: Response) {
+  async getAnalytics(req: TenantRequest, res: Response, next: NextFunction) {
     try {
       if (!req.tenantId) {
-        return res.status(status.BAD_REQUEST).json({ error: ERROR_MESSAGES.TENANT_ID_REQUIRED });
+        throw new BadRequestError('Tenant ID is required', 'TENANT_ID_REQUIRED');
       }
-      const tenantId = req.tenantId;
-      const analytics = await serviceRequestService.getAnalytics(tenantId);
+
+      const analytics = await serviceRequestService.getAnalytics(req.tenantId);
       res.json(analytics);
     } catch (error) {
-      logger.error('Error getting analytics:', error);
-      res.status(status.INTERNAL_SERVER_ERROR).json({ error: 'Failed to get analytics' });
+      next(error);
     }
   }
 }

@@ -7,6 +7,7 @@ import { createSocketIOServer } from './socket.config';
 import { configureRoutes } from './routes.config';
 import { configureHealthChecks } from './health.config';
 import { configureMetrics } from './metrics.config';
+import { configureSwagger } from './swagger.config';
 import { redisService } from './redis.service';
 import { loadAllActiveRequests, preloadCaches } from '../handlers/requestHandler';
 
@@ -55,19 +56,22 @@ async function startServer(): Promise<void> {
       }
     });
 
-    // 9. Configure Prometheus metrics
+    // 9. Configure Prometheus metrics (if enabled)
     configureMetrics(app, io);
 
-    // 10. Configure health check endpoints
+    // 10. Configure Swagger/OpenAPI documentation (if enabled)
+    configureSwagger(app);
+
+    // 11. Configure health check endpoints
     configureHealthChecks(app, io);
 
-    // 11. Configure routes
+    // 12. Configure routes
     configureRoutes(app, apiLimiter, authLimiter);
 
-    // 12. Configure error handling (must be last)
+    // 13. Configure error handling (must be last)
     configureErrorHandling(app);
 
-    // 13. Start server
+    // 14. Start server
     const port = Number(config.port);
     const host = config.host;
 
@@ -83,7 +87,7 @@ async function startServer(): Promise<void> {
       }
     });
 
-    // 14. Graceful shutdown
+    // 15. Graceful shutdown
     const gracefulShutdown = async (signal: string) => {
       logger.info(`${signal} received, shutting down gracefully...`);
       

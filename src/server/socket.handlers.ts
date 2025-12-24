@@ -216,16 +216,32 @@ export function setupSocketHandlers(socket: CustomSocket, user: JWTPayload | nul
   });
 
   // Complete request handler
-  socket.on('complete_request', async (requestId: string) => {
+  socket.on('complete_request', async (data: string | { requestId: string; completedBy?: 'waiter' | 'customer' }) => {
     // Allow both authenticated users (waiters) and unauthenticated users (customers) to complete requests
     try {
       const socketTenantId = socket.tenantSubdomain || tenantSubdomain;
+      
+      // Handle both old format (string) and new format (object)
+      let requestId: string;
+      let completedBy: 'waiter' | 'customer';
+      
+      if (typeof data === 'string') {
+        // Legacy format: just requestId as string
+        requestId = data;
+        completedBy = user ? 'waiter' : 'customer';
+      } else {
+        // New format: object with requestId and optional completedBy
+        requestId = data.requestId;
+        // Use explicitly provided completedBy, or fall back to user detection
+        completedBy = data.completedBy || (user ? 'waiter' : 'customer');
+      }
+      
       logger.info(
-        `✅ Completing request ${requestId} for tenant: ${socketTenantId} (by ${user ? user.email : 'customer'})`,
+        `✅ Completing request ${requestId} for tenant: ${socketTenantId} (by ${completedBy}: ${user ? user.email : 'customer'})`,
       );
-      await handleComplete(requestId, socketTenantId);
+      await handleComplete(requestId, socketTenantId, completedBy);
 
-      logger.info(`✅ Request ${requestId} completed for tenant ${socketTenantId}`);
+      logger.info(`✅ Request ${requestId} completed for tenant ${socketTenantId} by ${completedBy}`);
     } catch (error) {
       logger.error('❌ Error handling complete_request:', error);
       socket.emit('error', 'Failed to complete request');

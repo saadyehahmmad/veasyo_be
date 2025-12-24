@@ -1,8 +1,7 @@
 import express from 'express';
 import http from 'http';
-import { status } from 'http-status';
 import logger from '../utils/logger';
-import { config } from '../config/environment';
+import { errorHandler, notFoundHandler } from '../middleware/error-handler';
 
 /**
  * Create and configure Express application
@@ -36,37 +35,15 @@ export function createHTTPServer(app: express.Application): http.Server {
 
 /**
  * Configure error handling middleware
+ * IMPORTANT: Must be called LAST, after all routes
  */
 export function configureErrorHandling(app: express.Application): void {
-  // Error handling middleware
-  // Note: Error handling middleware must have 4 parameters (err, req, res, next)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    logger.error('Error:', {
-      error: err.message,
-      stack: err.stack,
-      requestId: req.requestId,
-      path: req.path,
-      method: req.method,
-    });
-    res.status(status.INTERNAL_SERVER_ERROR).json({
-      error: 'Internal Server Error',
-      message: config.nodeEnv === 'development' ? err.message : undefined,
-      requestId: req.requestId,
-    });
-  });
+  // 404 handler - must come before error handler
+  app.use(notFoundHandler);
 
-  // 404 handler
-  app.use((req: express.Request, res: express.Response) => {
-    logger.warn('404 Not Found', {
-      requestId: req.requestId,
-      path: req.path,
-      method: req.method,
-    });
-    res.status(status.NOT_FOUND).json({
-      error: 'Not Found',
-      requestId: req.requestId,
-    });
-  });
+  // Centralized error handler - must be last
+  app.use(errorHandler);
+
+  logger.info('✅ Error handling middleware configured');
 }
 

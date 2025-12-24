@@ -1,5 +1,5 @@
 import { db } from '../database/db';
-import { serviceRequests, tables, users, requestTypes, NewServiceRequest } from '../database/schema';
+import { serviceRequests, tables, users, requestTypes, feedback, NewServiceRequest } from '../database/schema';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { RequestStatus } from '../models/types';
 import { requestTypeService } from './request-type.service';
@@ -39,6 +39,7 @@ export class ServiceRequestService {
         timestampAcknowledged: serviceRequests.timestampAcknowledged,
         timestampCompleted: serviceRequests.timestampCompleted,
         acknowledgedBy: serviceRequests.acknowledgedBy,
+        completedBy: serviceRequests.completedBy,
         durationSeconds: serviceRequests.durationSeconds,
         createdAt: serviceRequests.createdAt,
         updatedAt: serviceRequests.updatedAt,
@@ -48,6 +49,11 @@ export class ServiceRequestService {
         requestTypeNameEn: requestTypes.nameEn,
         requestTypeNameAr: requestTypes.nameAr,
         requestTypeIcon: requestTypes.icon,
+        // Feedback data
+        feedbackRating: feedback.rating,
+        feedbackComments: feedback.comments,
+        feedbackCustomerName: feedback.customerName,
+        feedbackCustomerPhone: feedback.customerPhone,
       })
       .from(serviceRequests)
       .leftJoin(tables, eq(serviceRequests.tableId, tables.id))
@@ -59,6 +65,7 @@ export class ServiceRequestService {
           ELSE FALSE
         END
       `)
+      .leftJoin(feedback, eq(serviceRequests.id, feedback.requestId))
       .orderBy(desc(serviceRequests.timestampCreated));
 
     // Calculate duration for requests that don't have it
@@ -156,6 +163,7 @@ export class ServiceRequestService {
         timestampAcknowledged: serviceRequests.timestampAcknowledged,
         timestampCompleted: serviceRequests.timestampCompleted,
         acknowledgedBy: serviceRequests.acknowledgedBy,
+        completedBy: serviceRequests.completedBy,
         durationSeconds: serviceRequests.durationSeconds,
         createdAt: serviceRequests.createdAt,
         updatedAt: serviceRequests.updatedAt,
@@ -165,6 +173,11 @@ export class ServiceRequestService {
         requestTypeNameEn: requestTypes.nameEn,
         requestTypeNameAr: requestTypes.nameAr,
         requestTypeIcon: requestTypes.icon,
+        // Feedback data
+        feedbackRating: feedback.rating,
+        feedbackComments: feedback.comments,
+        feedbackCustomerName: feedback.customerName,
+        feedbackCustomerPhone: feedback.customerPhone,
       })
       .from(serviceRequests)
       .leftJoin(tables, eq(serviceRequests.tableId, tables.id))
@@ -176,6 +189,7 @@ export class ServiceRequestService {
           ELSE FALSE
         END
       `)
+      .leftJoin(feedback, eq(serviceRequests.id, feedback.requestId))
       .where(and(...conditions))
       .orderBy(
         sort.by === 'durationSeconds'

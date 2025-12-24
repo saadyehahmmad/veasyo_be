@@ -11,16 +11,71 @@ const tableController = new TableController();
 router.use(extractTenant);
 
 /**
- * @route GET /api/tables
- * @desc Get all tables (tenant-scoped) - Public for customers, all for authenticated admins
- * @access Public (customers), Admin, Waiter, SuperAdmin
+ * @swagger
+ * /api/tables:
+ *   get:
+ *     summary: Get all tables
+ *     description: Get all tables for the tenant (public access for customers, full access for authenticated users)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of tables
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     format: uuid
+ *                   tableNumber:
+ *                     type: string
+ *                   status:
+ *                     type: string
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/', optionalAuthenticate, tableController.getAllTables.bind(tableController));
 
 /**
- * @route POST /api/tables/batch
- * @desc Get multiple tables by IDs - Public for customers, optimized for batch fetch
- * @access Public (customers), Admin, Waiter, SuperAdmin
+ * @swagger
+ * /api/tables/batch:
+ *   post:
+ *     summary: Get multiple tables by IDs
+ *     description: Batch fetch multiple tables by their IDs (public access for customers)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tableIds
+ *             properties:
+ *               tableIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: uuid
+ *                 description: Array of table IDs to fetch
+ *     responses:
+ *       200:
+ *         description: List of requested tables
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
  */
 router.post('/batch', optionalAuthenticate, tableController.getTablesByIds.bind(tableController));
 
@@ -29,9 +84,27 @@ router.post('/batch', optionalAuthenticate, tableController.getTablesByIds.bind(
 router.use('/qr-codes', authenticate);
 
 /**
- * @route GET /api/tables/qr-codes
- * @desc Get QR code data for all tables
- * @access Admin, Manager, SuperAdmin
+ * @swagger
+ * /api/tables/qr-codes:
+ *   get:
+ *     summary: Get QR codes for all tables
+ *     description: Get QR code data for all tables in the tenant (admin, manager, superadmin only)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: QR code data for all tables
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
  */
 router.get(
   '/qr-codes',
@@ -40,9 +113,34 @@ router.get(
 );
 
 /**
- * @route POST /api/tables/qr-codes/update
- * @desc Update QR code URLs in database for table(s)
- * @access Admin, SuperAdmin
+ * @swagger
+ * /api/tables/qr-codes/update:
+ *   post:
+ *     summary: Update QR code URLs
+ *     description: Update QR code URLs in database for table(s) (admin, superadmin only)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tableIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: uuid
+ *                 description: Array of table IDs to update (empty array updates all)
+ *     responses:
+ *       200:
+ *         description: QR code URLs updated successfully
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
  */
 router.post(
   '/qr-codes/update',
@@ -117,9 +215,31 @@ router.get(
 );
 
 /**
- * @route GET /api/tables/:id
- * @desc Get table by ID - Public for customers
- * @access Public (customers), Admin, Waiter, SuperAdmin
+ * @swagger
+ * /api/tables/{id}:
+ *   get:
+ *     summary: Get table by ID
+ *     description: Get a specific table by ID (public access for customers)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Table ID
+ *     responses:
+ *       200:
+ *         description: Table details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
  */
 router.get('/:id', optionalAuthenticate, tableController.getTableById.bind(tableController));
 
@@ -127,9 +247,35 @@ router.get('/:id', optionalAuthenticate, tableController.getTableById.bind(table
 router.use(authenticate);
 
 /**
- * @route GET /api/tables/:id/qr-code
- * @desc Get QR code data for specific table
- * @access Admin, Manager, SuperAdmin
+ * @swagger
+ * /api/tables/{id}/qr-code:
+ *   get:
+ *     summary: Get QR code for specific table
+ *     description: Get QR code data for a specific table (admin, manager, superadmin only)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Table ID
+ *     responses:
+ *       200:
+ *         description: QR code data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
  */
 router.get(
   '/:id/qr-code',
@@ -138,9 +284,44 @@ router.get(
 );
 
 /**
- * @route POST /api/tables
- * @desc Create new table
- * @access Admin, SuperAdmin
+ * @swagger
+ * /api/tables:
+ *   post:
+ *     summary: Create new table
+ *     description: Create a new table in the tenant (admin, superadmin only)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tableNumber
+ *             properties:
+ *               tableNumber:
+ *                 type: string
+ *                 example: "T-01"
+ *               capacity:
+ *                 type: number
+ *               status:
+ *                 type: string
+ *                 enum: [available, occupied, reserved, maintenance]
+ *     responses:
+ *       201:
+ *         description: Table created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
  */
 router.post(
   '/',
@@ -149,9 +330,51 @@ router.post(
 );
 
 /**
- * @route PUT /api/tables/:id
- * @desc Update table
- * @access Admin, SuperAdmin
+ * @swagger
+ * /api/tables/{id}:
+ *   put:
+ *     summary: Update table
+ *     description: Update table information (admin, superadmin only)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Table ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tableNumber:
+ *                 type: string
+ *               capacity:
+ *                 type: number
+ *               status:
+ *                 type: string
+ *                 enum: [available, occupied, reserved, maintenance]
+ *     responses:
+ *       200:
+ *         description: Table updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
  */
 router.put(
   '/:id',
@@ -160,9 +383,31 @@ router.put(
 );
 
 /**
- * @route DELETE /api/tables/:id
- * @desc Delete table
- * @access Admin, SuperAdmin
+ * @swagger
+ * /api/tables/{id}:
+ *   delete:
+ *     summary: Delete table
+ *     description: Delete a table (admin, superadmin only)
+ *     tags: [Tables]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Table ID
+ *     responses:
+ *       204:
+ *         description: Table deleted successfully
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         $ref: '#/components/responses/NotFoundError'
  */
 router.delete(
   '/:id',

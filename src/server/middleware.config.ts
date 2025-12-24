@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config/environment';
 import logger from '../utils/logger';
+import { sanitizeInput } from '../middleware/validate';
 
 // Extend Request interface to include requestId
 declare module 'express-serve-static-core' {
@@ -148,6 +149,9 @@ export function configureMiddleware(app: express.Application): void {
   // Body parser with size limits to prevent DoS attacks
   app.use(express.json({ limit: '10mb' })); // Limit JSON payload to 10MB
   app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Limit URL-encoded payload to 10MB
+
+  // Input sanitization (XSS protection)
+  app.use(sanitizeInput);
 
   // HTTP request logging with Morgan
   // Use 'combined' format in production, 'dev' format in development

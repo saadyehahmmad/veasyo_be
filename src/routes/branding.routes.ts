@@ -18,9 +18,34 @@ const tenantService = new TenantService();
 router.use(authenticate);
 
 /**
- * @route GET /api/branding
- * @desc Get current tenant's branding (extracted from subdomain/header by middleware)
- * @access Authenticated users
+ * @swagger
+ * /api/branding:
+ *   get:
+ *     summary: Get tenant branding
+ *     description: Get current tenant's branding/theme settings (extracted from subdomain/header)
+ *     tags: [Branding]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Branding information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 name:
+ *                   type: string
+ *                 logoUrl:
+ *                   type: string
+ *                 primaryColor:
+ *                   type: string
+ *                 theme:
+ *                   type: string
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
  */
 router.get('/', async (req: TenantRequest, res: Response) => {
   try {
@@ -71,9 +96,38 @@ router.get('/', async (req: TenantRequest, res: Response) => {
 });
 
 /**
- * @route PUT /api/branding
- * @desc Update current tenant's branding (extracted from subdomain/header by middleware)
- * @access Admin and SuperAdmin
+ * @swagger
+ * /api/branding:
+ *   put:
+ *     summary: Update tenant branding
+ *     description: Update current tenant's branding/theme settings (admin, superadmin only)
+ *     tags: [Branding]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               primaryColor:
+ *                 type: string
+ *               secondaryColor:
+ *                 type: string
+ *               logoUrl:
+ *                 type: string
+ *               theme:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Branding updated successfully
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       403:
+ *         $ref: '#/components/responses/ForbiddenError'
  */
 router.put('/', async (req: TenantRequest, res: Response) => {
   try {
