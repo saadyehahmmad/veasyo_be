@@ -819,15 +819,11 @@ export class TableController {
    * Helper method to generate QR code URL
    */
   private _generateQRUrl(tenantSubdomain: string, tableId: string): string {
-    const domain = process.env.DOMAIN_URL || 'localhost';
-    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-    const port = process.env.NODE_ENV === 'production' ? '' : ':4200';
+    // Production domain (constant)
+    const domain = 'veasyo.com';
+    const protocol = 'https';
     
-    // Always include tenant subdomain
-    if (domain === 'localhost') {
-      return `${protocol}://${tenantSubdomain}.${domain}${port}/table/${tableId}`;
-    }
-    
+    // Build the full URL: https://subdomain.veasyo.com/table/tableId
     return `${protocol}://${tenantSubdomain}.${domain}/table/${tableId}`;
   }
 }
