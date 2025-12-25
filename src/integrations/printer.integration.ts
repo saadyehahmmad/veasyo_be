@@ -539,11 +539,12 @@ export class XPrinterIntegration {
   private async launchBrowser(): Promise<Browser> {
     const possiblePaths = [
       process.env.PUPPETEER_EXECUTABLE_PATH,
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      '/usr/bin/google-chrome',
       '/usr/bin/chromium',
       '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     ].filter(Boolean) as string[];
 
@@ -552,6 +553,7 @@ export class XPrinterIntegration {
       try {
         if (fs.existsSync(path)) {
           executablePath = path;
+          logger.debug(`Found Chrome/Chromium at: ${path}`);
           break;
         }
       } catch {
@@ -559,7 +561,16 @@ export class XPrinterIntegration {
       }
     }
 
+    if (!executablePath) {
+      const errorMsg = 
+        'Chrome/Chromium not found. Please install Chrome or Chromium, or set PUPPETEER_EXECUTABLE_PATH environment variable.\n' +
+        `Searched paths:\n${possiblePaths.join('\n')}`;
+      logger.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+
     const launchOptions: LaunchOptions = {
+      executablePath,
       headless: true,
       args: [
         '--no-sandbox',
@@ -577,10 +588,7 @@ export class XPrinterIntegration {
       ],
     };
 
-    if (executablePath) {
-      launchOptions.executablePath = executablePath;
-    }
-
+    logger.info(`Launching Chrome/Chromium from: ${executablePath}`);
     return await puppeteer.launch(launchOptions);
   }
 

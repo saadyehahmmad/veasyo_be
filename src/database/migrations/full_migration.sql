@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS service_requests (
     timestamp_acknowledged TIMESTAMPTZ,
     timestamp_completed TIMESTAMPTZ,
     acknowledged_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    completed_by VARCHAR(50),
     duration_seconds INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
