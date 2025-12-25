@@ -108,6 +108,12 @@ export class XPrinterIntegration {
     const commands: number[] = [];
     const isArabic = language === 'ar';
 
+    // Cut paper before printing (prepare fresh paper)
+    commands.push(0x1d, 0x56, 0x41, 0x03); // GS V A 3 - Partial cut
+    
+    // Beep/alarm before printing (alert staff)
+    commands.push(0x1b, 0x42, 0x03, 0x01); // ESC B n t - Beep 3 times, 100ms each
+    
     // Initialize printer
     commands.push(0x1b, 0x40); // ESC @ - Initialize printer
 
@@ -226,8 +232,13 @@ export class XPrinterIntegration {
       commands.push(0x0a, 0x0a);
     }
 
-    // Cut paper with extra feed for margin
+    // Bottom margin
     commands.push(0x0a, 0x0a, 0x0a, 0x0a); // Four line feeds for bottom margin
+    
+    // Beep/alarm after printing (alert staff that print is complete)
+    commands.push(0x1b, 0x42, 0x05, 0x01); // ESC B n t - Beep 5 times, 100ms each
+    
+    // Cut paper after printing
     commands.push(0x1d, 0x56, 0x41, 0x03); // GS V A 3 - Partial cut
 
     return Buffer.from(commands);
@@ -406,6 +417,9 @@ export class XPrinterIntegration {
     const commands: number[] = [];
     const height = canvas.height;
     
+    // Beep/alarm before printing (alert staff)
+    commands.push(0x1b, 0x42, 0x03, 0x01); // ESC B n t - Beep 3 times, 100ms each
+    
     // Initialize printer
     commands.push(0x1b, 0x40); // ESC @ - Initialize printer
     
@@ -436,8 +450,13 @@ export class XPrinterIntegration {
       commands.push(0x0a);
     }
     
-    // Bottom margin and cut
+    // Bottom margin
     commands.push(0x0a, 0x0a, 0x0a, 0x0a);
+    
+    // Beep/alarm after printing (alert staff that print is complete)
+    commands.push(0x1b, 0x42, 0x05, 0x01); // ESC B n t - Beep 5 times, 100ms each
+    
+    // Cut paper after printing
     commands.push(0x1d, 0x56, 0x41, 0x03); // GS V A 3 - Partial cut
     
     return Buffer.from(commands);
