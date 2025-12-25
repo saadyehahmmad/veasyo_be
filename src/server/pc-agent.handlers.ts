@@ -37,9 +37,23 @@ export function setupPcAgentNamespace(io: Server): void {
     const genericSocket = socket as unknown as Socket;
     logger.info(`PC Agent connected: ${socket.id}`);
 
+    // If no registration within 10 seconds, disconnect
+    const registrationTimeout = setTimeout(() => {
+      if (socket.connected) {
+        logger.warn(`PC Agent ${socket.id} did not register within timeout, disconnecting`);
+        socket.emit('pc-agent:error', {
+          message: 'Registration timeout. Please register immediately after connecting.',
+        });
+        socket.disconnect();
+      }
+    }, 10000);
+
     // Handle PC Agent registration
     socket.on('pc-agent:register', (data: { tenantId: string }) => {
       const { tenantId } = data;
+
+      // Clear registration timeout
+      clearTimeout(registrationTimeout);
 
       if (!tenantId || typeof tenantId !== 'string') {
         logger.error(`Invalid tenant ID from PC Agent ${socket.id}`);
@@ -90,21 +104,6 @@ export function setupPcAgentNamespace(io: Server): void {
     // Handle errors
     socket.on('error', (error) => {
       logger.error(`PC Agent socket error: ${socket.id}`, { error });
-    });
-
-    // If no registration within 10 seconds, disconnect
-    const registrationTimeout = setTimeout(() => {
-      if (socket.connected) {
-        logger.warn(`PC Agent ${socket.id} did not register within timeout, disconnecting`);
-        socket.emit('pc-agent:error', {
-          message: 'Registration timeout. Please register immediately after connecting.',
-        });
-        socket.disconnect();
-      }
-    }, 10000);
-
-    socket.on('pc-agent:register', () => {
-      clearTimeout(registrationTimeout);
     });
   });
 

@@ -17,7 +17,10 @@ export class PcAgentRegistry {
     // Disconnect existing agent for this tenant if any
     const existingSocket = this.agents.get(tenantId);
     if (existingSocket && existingSocket.connected) {
-      logger.warn(`Replacing existing PC Agent connection for tenant ${tenantId}`);
+      logger.warn(`Replacing existing PC Agent connection for tenant ${tenantId}`, {
+        oldSocketId: existingSocket.id,
+        newSocketId: socket.id,
+      });
       existingSocket.disconnect();
     }
 
