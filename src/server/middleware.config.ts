@@ -172,6 +172,8 @@ export function configureMiddleware(app: express.Application): void {
 
 /**
  * Create rate limiters
+ * Rate limiting is PER-IP ADDRESS - each device/IP is tracked independently
+ * Blocking one IP does NOT affect other users/devices
  */
 export function createRateLimiters() {
   // General API rate limiter - 100 requests per 15 minutes per IP
@@ -182,19 +184,59 @@ export function createRateLimiters() {
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    // Rate limiting is per-IP by default - uses req.ip
+    // Each device/IP address is tracked independently
+    keyGenerator: (req) => {
+      // Use IP address as the key for rate limiting
+      // This ensures each device is limited independently
+      return req.ip || 'unknown';
+    },
     // Skip Socket.IO endpoints - they should not be rate limited
     skip: (req) => {
       // Skip rate limiting for Socket.IO handshake and polling requests
       return req.path.startsWith('/socket.io/');
     },
+    // Custom handler for rate limit exceeded
+    handler: (req, res) => {
+      logger.warn(`Rate limit exceeded for IP: ${req.ip}`, {
+        ip: req.ip,
+        path: req.path,
+        method: req.method,
+      });
+      res.status(429).json({
+        error: 'Too Many Requests',
+        message: 'Too many requests from this device. Please try again in 15 minutes.',
+        retryAfter: Math.ceil(15 * 60), // seconds
+      });
+    },
   });
 
   // Stricter rate limiter for authentication endpoints
+  // CRITICAL: This is per-IP to prevent brute force attacks from specific devices
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // Limit each IP to 5 login requests per windowMs
-    message: 'Too many authentication attempts, please try again later.',
+    message: 'Too many authentication attempts from this device, please try again later.',
     skipSuccessfulRequests: true, // Don't count successful requests
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Explicitly set key generator to use IP address
+    keyGenerator: (req) => {
+      return req.ip || 'unknown';
+    },
+    // Custom handler for auth rate limit
+    handler: (req, res) => {
+      logger.warn(`Auth rate limit exceeded for IP: ${req.ip}`, {
+        ip: req.ip,
+        path: req.path,
+        userAgent: req.headers['user-agent'],
+      });
+      res.status(429).json({
+        error: 'Too Many Requests',
+        message: 'Too many login attempts from this device. Please try again in 15 minutes.',
+        retryAfter: Math.ceil(15 * 60), // seconds
+      });
+    },
   });
 
   return { apiLimiter, authLimiter };

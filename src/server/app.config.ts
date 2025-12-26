@@ -2,12 +2,28 @@ import express from 'express';
 import http from 'http';
 import logger from '../utils/logger';
 import { errorHandler, notFoundHandler } from '../middleware/error-handler';
+import { config } from '../config/environment';
 
 /**
  * Create and configure Express application
  */
 export function createExpressApp(): express.Application {
   const app = express();
+  
+  // Trust proxy - CRITICAL for rate limiting to work correctly
+  // This allows Express to correctly identify the client's real IP address
+  // when behind a reverse proxy (nginx, load balancer, etc.)
+  // Without this, all requests would appear to come from the proxy's IP
+  if (config.nodeEnv === 'production') {
+    // In production, trust the first proxy (nginx, load balancer)
+    app.set('trust proxy', 1);
+    logger.info('✅ Express configured to trust proxy for IP detection');
+  } else {
+    // In development, trust all proxies (for testing)
+    app.set('trust proxy', true);
+    logger.info('✅ Express configured to trust all proxies (development mode)');
+  }
+  
   return app;
 }
 

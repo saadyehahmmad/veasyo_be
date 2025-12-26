@@ -20,6 +20,8 @@ import brandingRoutes from '../routes/branding.routes';
 import requestTypeRoutes from '../routes/request-type.routes';
 import integrationsRoutes from '../routes/integrations.routes';
 import feedbackRoutes from '../routes/feedback.routes';
+import subscriptionRoutes from '../routes/subscription.routes';
+import invoiceRoutes from '../routes/invoice.routes';
 
 /**
  * Configure and register all API routes
@@ -29,19 +31,21 @@ export function configureRoutes(
   apiLimiter: RateLimitRequestHandler,
   authLimiter: RateLimitRequestHandler
 ): void {
-  // Apply general rate limiting to all API routes
-  // Socket.IO connections are excluded from rate limiting (handled in skip function)
-  app.use('/api', apiLimiter);
+  // Rate limiting is now only applied to auth endpoints (see below)
+  // General API rate limiting removed to prevent blocking legitimate requests
 
   // Health check endpoint
-  app.get('/api/health', async (req: Request, res: Response) => {
+  app.get('/api/health', async (req: TenantRequest, res: Response) => {
     try {
-      const licenseStatus = licenseService.getLicenseStatus();
-      const isLicenseValid = await licenseService.validateLicense();
+      // Check for tenant-specific health if tenant context is available
+      const tenantId = req.tenantId;
+      const licenseStatus = await licenseService.getLicenseStatus(tenantId);
+      const isLicenseValid = await licenseService.validateLicense(tenantId);
 
       res.json({
         status: isLicenseValid ? 'ok' : 'license_disabled',
         license: licenseStatus,
+        tenantId: tenantId || 'global',
         timestamp: new Date().toISOString(),
         environment: config.nodeEnv,
         requestId: req.requestId,
@@ -184,14 +188,20 @@ export function configureRoutes(
   app.use('/api/superadmin', licenseCheckMiddleware, superadminRoutes);
 
   // Tenant-scoped routes
+  // IMPORTANT: extractTenant MUST come before licenseCheckMiddleware for per-tenant license validation
   // Note: tenant branding is public (no auth required), but other routes need auth
   app.use('/api/tenants', licenseCheckMiddleware, tenantRoutes); // Moved extractTenant inside routes for flexibility
-  app.use('/api/users', licenseCheckMiddleware, extractTenant, userRoutes);
-  app.use('/api/tables', licenseCheckMiddleware, extractTenant, tableRoutes);
-  app.use('/api/service-requests', licenseCheckMiddleware, extractTenant, serviceRequestRoutes);
-  app.use('/api/branding', licenseCheckMiddleware, extractTenant, brandingRoutes);
-  app.use('/api/request-types', licenseCheckMiddleware, requestTypeRoutes);
-  app.use('/api/integrations', licenseCheckMiddleware, extractTenant, integrationsRoutes);
-  app.use('/api/feedback', licenseCheckMiddleware, feedbackRoutes); // Feedback routes (public POST, protected GET/DELETE)
+  app.use('/api/users', extractTenant, licenseCheckMiddleware, userRoutes);
+  app.use('/api/tables', extractTenant, licenseCheckMiddleware, tableRoutes);
+  app.use('/api/service-requests', extractTenant, licenseCheckMiddleware, serviceRequestRoutes);
+  app.use('/api/branding', extractTenant, licenseCheckMiddleware, brandingRoutes);
+  app.use('/api/request-types', extractTenant, licenseCheckMiddleware, requestTypeRoutes);
+  app.use('/api/integrations', extractTenant, licenseCheckMiddleware, integrationsRoutes);
+  app.use('/api/feedback', extractTenant, licenseCheckMiddleware, feedbackRoutes); // Feedback routes (public POST, protected GET/DELETE)
+  
+  // Subscription routes - extractTenant is handled inside routes after authenticate
+  // This allows authenticate to set tenantId from JWT first
+  app.use('/api/subscription', licenseCheckMiddleware, subscriptionRoutes);
+  app.use('/api/invoices', licenseCheckMiddleware, invoiceRoutes); // Invoice and payment history routes
 }
 

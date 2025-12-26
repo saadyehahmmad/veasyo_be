@@ -10,6 +10,7 @@ import { configureMetrics } from './metrics.config';
 import { configureSwagger } from './swagger.config';
 import { redisService } from './redis.service';
 import { loadAllActiveRequests, preloadCaches } from '../handlers/requestHandler';
+import { startSubscriptionCronJobs } from '../services/subscription-cron.service';
 
 /**
  * Main server initialization and startup
@@ -85,6 +86,9 @@ async function startServer(): Promise<void> {
       if (redisConnected) {
         logger.info(`✅ Redis pub/sub enabled for horizontal scaling`);
       }
+      
+      // 15. Start subscription cron jobs
+      startSubscriptionCronJobs();
     });
 
     // 15. Graceful shutdown

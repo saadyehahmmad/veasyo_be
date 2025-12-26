@@ -1,8 +1,15 @@
 import { db } from '../database/db';
 import { tenants, NewTenant } from '../database/schema';
 import { eq, desc } from 'drizzle-orm';
+import { SubscriptionService } from './subscription.service';
 
 export class TenantService {
+  private subscriptionService: SubscriptionService;
+
+  constructor() {
+    this.subscriptionService = new SubscriptionService();
+  }
+
   /**
    * Get all tenants
    */
@@ -37,15 +44,12 @@ export class TenantService {
   }
 
   /**
-   * Create new tenant
+   * Create new tenant (without plan/limits - those come from subscription)
    */
   async createTenant(tenantData: Omit<NewTenant, 'id' | 'createdAt' | 'updatedAt'>) {
     const newTenant: NewTenant = {
       ...tenantData,
-      plan: tenantData.plan || 'free',
-      maxTables: tenantData.maxTables || 10,
-      maxUsers: tenantData.maxUsers || 5,
-      active: tenantData.active !== undefined ? tenantData.active : true,
+      active: tenantData.active !== undefined ? tenantData.active : false, // Default to false - requires subscription
       settings: tenantData.settings || {},
     };
 
@@ -80,11 +84,27 @@ export class TenantService {
   }
 
   /**
-   * Check if tenant exists and is active
+   * Check if tenant exists and is active (both active flag AND valid subscription)
    */
   async isTenantActive(id: string) {
     const tenant = await this.getTenantById(id);
-    return tenant?.active;
+    if (!tenant || !tenant.active) {
+      return false;
+    }
+
+    // Check if tenant has valid subscription
+    const hasValidSubscription = await this.subscriptionService.isTenantValid(id);
+    return hasValidSubscription;
+  }
+
+  /**
+   * Ensure tenant has valid subscription, throw error if not
+   */
+  async ensureTenantHasValidSubscription(tenantId: string): Promise<void> {
+    const hasValidSubscription = await this.subscriptionService.isTenantValid(tenantId);
+    if (!hasValidSubscription) {
+      throw new Error('Tenant does not have a valid subscription');
+    }
   }
 
   /**

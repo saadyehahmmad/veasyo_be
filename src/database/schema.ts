@@ -22,10 +22,8 @@ export const tenants = pgTable(
     name: varchar('name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull().unique(),
     subdomain: varchar('subdomain', { length: 100 }).unique(),
-    plan: varchar('plan', { length: 50 }).default('free').notNull(),
-    maxTables: integer('max_tables').default(10),
-    maxUsers: integer('max_users').default(5),
     active: boolean('active').default(true).notNull(),
+    licenseEnabled: boolean('license_enabled').default(true).notNull(), // Per-tenant license control
     settings: jsonb('settings').default({}).notNull(),
     // Branding / Theme customization
     logoUrl: text('logo_url'),
@@ -163,15 +161,18 @@ export const subscriptions = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' })
       .unique(),
-    plan: varchar('plan', { length: 50 }).notNull(), // 'free', 'basic', 'premium', 'enterprise'
+    plan: varchar('plan', { length: 50 }).notNull(), // 'free', 'basic', 'standard', 'premium', 'custom' - just a label
     status: varchar('status', { length: 20 }).default('active').notNull(), // 'active', 'expired', 'cancelled', 'suspended'
     startDate: timestamp('start_date', { withTimezone: true }).defaultNow().notNull(),
     endDate: timestamp('end_date', { withTimezone: true }),
     lastPaymentDate: timestamp('last_payment_date', { withTimezone: true }),
     nextPaymentDate: timestamp('next_payment_date', { withTimezone: true }),
-    amount: integer('amount'), // in cents
+    amount: integer('amount'), // Amount in cents (1 USD = 100 cents)
+    tax: integer('tax'), // Tax amount in cents (fixed amount)
     currency: varchar('currency', { length: 3 }).default('USD'),
     paymentMethod: varchar('payment_method', { length: 50 }),
+    maxTables: integer('max_tables').default(10).notNull(), // Maximum tables allowed
+    maxUsers: integer('max_users').default(5).notNull(), // Maximum users allowed
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -180,6 +181,7 @@ export const subscriptions = pgTable(
     tenantIdIdx: index('idx_subscriptions_tenant_id').on(table.tenantId),
     statusIdx: index('idx_subscriptions_status').on(table.status),
     endDateIdx: index('idx_subscriptions_end_date').on(table.endDate),
+    planIdx: index('idx_subscriptions_plan').on(table.plan),
   }),
 );
 

@@ -260,7 +260,7 @@ export function configureHealthChecks(
 
       // Check license status
       try {
-        const licenseStatus = licenseService.getLicenseStatus();
+        const licenseStatus = await licenseService.getLicenseStatus();
         health.services.license = licenseStatus;
         if (licenseStatus.status !== 'active') {
           health.status = 'degraded';

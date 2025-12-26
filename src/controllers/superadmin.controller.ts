@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { SuperAdminService } from '../services/superadmin.service';
-import { SubscriptionService } from '../services/subscription.service';
+import { SubscriptionService, UpdateSubscriptionParams } from '../services/subscription.service';
 import { UserService } from '../services/user.service';
 import { AnalyticsService } from '../services/analytics.service';
 import { AuthRequest } from '../middleware/auth';
@@ -95,7 +95,6 @@ export class SuperAdminController {
           name: t.name,
           subdomain: t.subdomain,
           active: t.active,
-          plan: t.plan,
         })),
       });
     } catch (error) {
@@ -329,10 +328,10 @@ export class SuperAdminController {
   }
 
   /**
-   * Get all subscriptions
+   * Get all subscriptions (old method - replaced)
    * GET /api/superadmin/subscriptions
    */
-  async getAllSubscriptions(req: AuthRequest, res: Response) {
+  async getAllSubscriptionsOld(req: AuthRequest, res: Response) {
     try {
       const expiring = await this._subscriptionService.getExpiringSubscriptions(7);
       const expired = await this._subscriptionService.getExpiredSubscriptions();
@@ -674,5 +673,545 @@ export class SuperAdminController {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return password;
+  }
+
+  // ============================================
+  // SUBSCRIPTION MANAGEMENT
+  // ============================================
+
+  /**
+   * Get pricing plans
+   * GET /api/superadmin/pricing/plans
+   */
+  async getPricingPlans(req: AuthRequest, res: Response) {
+    try {
+      const plans = this._superAdminService.getPricingPlans();
+      const addons = this._superAdminService.getAddonPricing();
+
+      res.json({
+        plans,
+        addons,
+      });
+    } catch (error) {
+      logger.error('Get pricing plans error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get pricing plans',
+      });
+    }
+  }
+
+  /**
+   * Calculate custom plan price
+   * POST /api/superadmin/pricing/calculate
+   */
+  async calculateCustomPrice(req: AuthRequest, res: Response) {
+    try {
+      const { tables, waiters } = req.body;
+
+      if (!tables || !waiters) {
+        return res.status(status.BAD_REQUEST).json({
+          error: ERROR_MESSAGES.INVALID_INPUT,
+          message: 'Tables and waiters are required',
+        });
+      }
+
+      // Pricing calculation is deprecated - plans are now simple labels
+      // Return empty calculation structure for backward compatibility
+      const calculation = {
+        basePrice: 0,
+        totalAddonsCost: 0,
+        totalPrice: 0,
+      };
+
+      res.json(calculation);
+    } catch (error) {
+      logger.error('Calculate custom price error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to calculate price',
+      });
+    }
+  }
+
+  /**
+   * Create subscription for tenant
+   * POST /api/superadmin/subscriptions
+   */
+  async createSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId, plan, startDate, endDate, amount, tax, maxTables, maxUsers } = req.body;
+
+      if (!tenantId || !plan || !startDate || !endDate || amount === undefined || !maxTables || !maxUsers) {
+        return res.status(status.BAD_REQUEST).json({
+          error: ERROR_MESSAGES.INVALID_INPUT,
+          message: 'Tenant ID, plan, start date, end date, amount, max tables, and max users are required',
+        });
+      }
+
+      // Validate dates
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (end <= start) {
+        return res.status(status.BAD_REQUEST).json({
+          error: ERROR_MESSAGES.INVALID_INPUT,
+          message: 'End date must be after start date',
+        });
+      }
+
+      // Frontend already sends amount and tax in cents, so use them directly
+      const amountInCents = Math.round(parseFloat(amount));
+      const taxInCents = tax !== undefined ? Math.round(parseFloat(tax)) : 0;
+
+      const subscription = await this._superAdminService.createTenantSubscription(
+        {
+          tenantId,
+          plan,
+          startDate: start,
+          endDate: end,
+          amount: amountInCents,
+          tax: taxInCents,
+          maxTables: parseInt(maxTables),
+          maxUsers: parseInt(maxUsers),
+        },
+        req.user!.userId
+      );
+
+      res.status(status.CREATED).json({
+        message: 'Subscription created successfully',
+        subscription,
+      });
+    } catch (error) {
+      logger.error('Create subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to create subscription',
+      });
+    }
+  }
+
+  /**
+   * Update subscription
+   * PUT /api/superadmin/subscriptions/:tenantId
+   */
+  async updateSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+      const { plan, startDate, endDate, amount, tax, maxTables, maxUsers, status: subscriptionStatus } = req.body;
+
+      const updates: UpdateSubscriptionParams = {};
+      if (plan) updates.plan = plan;
+      if (startDate) updates.startDate = new Date(startDate);
+      if (endDate) updates.endDate = new Date(endDate);
+      // Frontend already sends amount and tax in cents, so use them directly
+      if (amount !== undefined) updates.amount = Math.round(parseFloat(amount));
+      if (tax !== undefined) updates.tax = Math.round(parseFloat(tax));
+      if (maxTables !== undefined) updates.maxTables = parseInt(maxTables);
+      if (maxUsers !== undefined) updates.maxUsers = parseInt(maxUsers);
+      if (subscriptionStatus) updates.status = subscriptionStatus;
+
+      // Validate dates if both provided
+      if (updates.startDate && updates.endDate && updates.endDate <= updates.startDate) {
+        return res.status(status.BAD_REQUEST).json({
+          error: ERROR_MESSAGES.INVALID_INPUT,
+          message: 'End date must be after start date',
+        });
+      }
+
+      const subscription = await this._superAdminService.updateTenantSubscription(
+        tenantId,
+        updates,
+        req.user!.userId
+      );
+
+      res.json({
+        message: 'Subscription updated successfully',
+        subscription,
+      });
+    } catch (error) {
+      logger.error('Update subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: ERROR_MESSAGES.FAILED_TO_UPDATE_SUBSCRIPTION,
+      });
+    }
+  }
+
+  /**
+   * Get all subscriptions
+   * GET /api/superadmin/subscriptions
+   */
+  async getAllSubscriptions(req: AuthRequest, res: Response) {
+    try {
+      const subscriptions = await this._superAdminService.getAllSubscriptions();
+      res.json({
+        subscriptions,
+        count: subscriptions.length,
+      });
+    } catch (error) {
+      logger.error('Get all subscriptions error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get subscriptions',
+      });
+    }
+  }
+
+  /**
+   * Delete subscription
+   * DELETE /api/superadmin/subscriptions/:subscriptionId
+   */
+  async deleteSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { subscriptionId } = req.params;
+      await this._superAdminService.deleteSubscription(subscriptionId, req.user!.userId);
+      res.json({
+        message: 'Subscription deleted successfully',
+      });
+    } catch (error) {
+      logger.error('Delete subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to delete subscription',
+      });
+    }
+  }
+
+  /**
+   * Get subscription details with usage
+   * GET /api/superadmin/subscriptions/:tenantId
+   */
+  async getSubscriptionDetails(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+
+      const details = await this._superAdminService.getSubscriptionDetails(tenantId);
+
+      if (!details) {
+        return res.status(status.NOT_FOUND).json({
+          error: ERROR_MESSAGES.NOT_FOUND,
+          message: 'Subscription not found',
+        });
+      }
+
+      res.json(details);
+    } catch (error) {
+      logger.error('Get subscription details error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: ERROR_MESSAGES.FAILED_TO_GET_SUBSCRIPTION,
+      });
+    }
+  }
+
+  /**
+   * Renew subscription
+   * POST /api/superadmin/subscriptions/:tenantId/renew
+   */
+  async renewSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+      const { months = 1 } = req.body;
+
+      const subscription = await this._superAdminService.renewTenantSubscription(
+        tenantId,
+        months,
+        req.user!.userId
+      );
+
+      res.json({
+        message: 'Subscription renewed successfully',
+        subscription,
+      });
+    } catch (error) {
+      logger.error('Renew subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to renew subscription',
+      });
+    }
+  }
+
+  /**
+   * Cancel subscription
+   * POST /api/superadmin/subscriptions/:tenantId/cancel
+   */
+  async cancelSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+
+      const subscription = await this._superAdminService.cancelTenantSubscription(
+        tenantId,
+        req.user!.userId
+      );
+
+      res.json({
+        message: 'Subscription cancelled successfully',
+        subscription,
+      });
+    } catch (error) {
+      logger.error('Cancel subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to cancel subscription',
+      });
+    }
+  }
+
+  /**
+   * Suspend subscription
+   * POST /api/superadmin/subscriptions/:tenantId/suspend
+   */
+  async suspendSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+
+      const subscription = await this._superAdminService.suspendTenantSubscription(
+        tenantId,
+        req.user!.userId
+      );
+
+      res.json({
+        message: 'Subscription suspended successfully',
+        subscription,
+      });
+    } catch (error) {
+      logger.error('Suspend subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to suspend subscription',
+      });
+    }
+  }
+
+  /**
+   * Reactivate subscription
+   * POST /api/superadmin/subscriptions/:tenantId/reactivate
+   */
+  async reactivateSubscription(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+      const { endDate } = req.body;
+
+      const subscription = await this._superAdminService.reactivateTenantSubscription(
+        tenantId,
+        endDate ? new Date(endDate) : undefined,
+        req.user!.userId
+      );
+
+      res.json({
+        message: 'Subscription reactivated successfully',
+        subscription,
+      });
+    } catch (error) {
+      logger.error('Reactivate subscription error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to reactivate subscription',
+      });
+    }
+  }
+
+  /**
+   * Get subscription analytics
+   * GET /api/superadmin/subscriptions/analytics
+   */
+  async getSubscriptionAnalytics(req: AuthRequest, res: Response) {
+    try {
+      const analytics = await this._superAdminService.getSubscriptionAnalytics();
+
+      res.json(analytics);
+    } catch (error) {
+      logger.error('Get subscription analytics error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get subscription analytics',
+      });
+    }
+  }
+
+  /**
+   * Get expiring subscriptions
+   * GET /api/superadmin/subscriptions/expiring?days=7
+   */
+  async getExpiringSubscriptions(req: AuthRequest, res: Response) {
+    try {
+      const days = parseInt(req.query.days as string) || 7;
+
+      const subscriptions = await this._superAdminService.getExpiringSubscriptions(days);
+
+      res.json({
+        subscriptions,
+        count: subscriptions.length,
+      });
+    } catch (error) {
+      logger.error('Get expiring subscriptions error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get expiring subscriptions',
+      });
+    }
+  }
+
+  /**
+   * Suggest plan for tenant
+   * GET /api/superadmin/subscriptions/:tenantId/suggest
+   */
+  async suggestPlan(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+
+      const suggestion = await this._superAdminService.suggestPlanForTenant(tenantId);
+
+      if (!suggestion) {
+        return res.status(status.NOT_FOUND).json({
+          error: ERROR_MESSAGES.NOT_FOUND,
+          message: ERROR_MESSAGES.TENANT_NOT_FOUND,
+        });
+      }
+
+      res.json(suggestion);
+    } catch (error) {
+      logger.error('Suggest plan error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to suggest plan',
+      });
+    }
+  }
+
+  /**
+   * Get tenant usage statistics
+   * GET /api/superadmin/tenants/:tenantId/usage
+   */
+  async getTenantUsage(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+
+      const usage = await this._subscriptionService.getTenantUsage(tenantId);
+
+      if (!usage) {
+        return res.status(status.NOT_FOUND).json({
+          error: ERROR_MESSAGES.NOT_FOUND,
+          message: ERROR_MESSAGES.TENANT_NOT_FOUND,
+        });
+      }
+
+      res.json(usage);
+    } catch (error) {
+      logger.error('Get tenant usage error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get tenant usage',
+      });
+    }
+  }
+
+  /**
+   * Get all tenant invoices (superadmin view)
+   * GET /api/superadmin/tenants/:tenantId/invoices
+   */
+  async getTenantInvoices(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+
+      const invoices = await this._subscriptionService.getTenantInvoices(tenantId);
+
+      res.json({
+        invoices,
+        count: invoices.length,
+      });
+    } catch (error) {
+      logger.error('Get tenant invoices error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get tenant invoices',
+      });
+    }
+  }
+
+  /**
+   * Get all tenants with usage statistics
+   * GET /api/superadmin/tenants/usage/all
+   */
+  async getAllTenantsUsage(req: AuthRequest, res: Response) {
+    try {
+      const tenantsUsage = await this._superAdminService.getAllTenantsUsage();
+
+      res.json({
+        tenants: tenantsUsage,
+        count: tenantsUsage.length,
+      });
+    } catch (error) {
+      logger.error('Get all tenants usage error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to get tenants usage',
+      });
+    }
+  }
+
+  /**
+   * Update subscription pricing (manual override)
+   * PATCH /api/superadmin/subscriptions/:tenantId/pricing
+   * 
+   * IMPORTANT: This only affects FUTURE payments. Previous invoices and payments remain unchanged.
+   * The new price will apply from the next billing cycle (nextPaymentDate).
+   */
+  async updateSubscriptionPricing(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req.params;
+      const { amount, tax } = req.body;
+
+      // Get current subscription to check nextPaymentDate
+      const currentSubscription = await this._subscriptionService.getSubscriptionByTenant(tenantId);
+      if (!currentSubscription) {
+        return res.status(status.NOT_FOUND).json({
+          error: ERROR_MESSAGES.NOT_FOUND,
+          message: 'Subscription not found',
+        });
+      }
+
+      // Frontend already sends amount and tax in cents, so use them directly
+      const amountInCents = amount !== undefined ? Math.round(parseFloat(amount)) : undefined;
+      const taxInCents = tax !== undefined ? Math.round(parseFloat(tax)) : undefined;
+
+      // Update pricing - this only affects future billing cycles
+      // Previous payments and invoices remain unchanged
+      const updated = await this._subscriptionService.updateSubscription(tenantId, {
+        amount: amountInCents,
+        tax: taxInCents,
+      });
+
+      if (!updated) {
+        return res.status(status.NOT_FOUND).json({
+          error: ERROR_MESSAGES.NOT_FOUND,
+          message: 'Subscription not found',
+        });
+      }
+
+      // Log the price change for audit purposes
+      logger.info(`Subscription pricing updated for tenant ${tenantId}`, {
+        oldAmount: currentSubscription.amount,
+        newAmount: amountInCents,
+        oldTax: currentSubscription.tax,
+        newTax: taxInCents,
+        nextPaymentDate: currentSubscription.nextPaymentDate,
+        note: 'Price change will apply from next billing cycle. Previous payments remain unchanged.',
+      });
+
+      res.json({
+        message: 'Subscription pricing updated successfully. New price will apply from the next billing cycle.',
+        subscription: updated,
+        effectiveFrom: currentSubscription.nextPaymentDate || currentSubscription.endDate,
+        note: 'Previous payments and invoices remain unchanged.',
+      });
+    } catch (error) {
+      logger.error('Update subscription pricing error:', error);
+      res.status(status.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_MESSAGES.INTERNAL_SERVER,
+        message: 'Failed to update subscription pricing',
+      });
+    }
   }
 }

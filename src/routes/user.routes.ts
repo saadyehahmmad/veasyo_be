@@ -3,6 +3,7 @@ import { UserController } from '../controllers/user.controller';
 import { authenticate } from '../middleware/auth';
 import { requireSelfOrAdmin, requireTenantAdmin } from '../middleware/rbac';
 import { validateBody, validateParams, validateQuery } from '../middleware/validate';
+import { checkUserLimit } from '../middleware/subscription-limits';
 import {
   createUserSchema,
   updateUserSchema,
@@ -172,6 +173,7 @@ router.get(
 router.post(
   '/',
   requireTenantAdmin(),
+  checkUserLimit, // Check subscription limit before creating user
   validateBody(createUserSchema),
   userController.createUser.bind(userController)
 );

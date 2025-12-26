@@ -393,4 +393,123 @@ router.post('/users', superAdminController.createUser.bind(superAdminController)
  */
 router.post('/users/:userId/reset-password', superAdminController.resetUserPassword.bind(superAdminController));
 
+// ============================================
+// SUBSCRIPTION MANAGEMENT
+// ============================================
+
+/**
+ * @route GET /api/superadmin/pricing/plans
+ * @desc Get all pricing plans and add-on pricing
+ * @access SuperAdmin
+ */
+router.get('/pricing/plans', superAdminController.getPricingPlans.bind(superAdminController));
+
+/**
+ * @route POST /api/superadmin/pricing/calculate
+ * @desc Calculate custom plan pricing
+ * @access SuperAdmin
+ */
+router.post('/pricing/calculate', superAdminController.calculateCustomPrice.bind(superAdminController));
+
+/**
+ * @route POST /api/superadmin/subscriptions
+ * @desc Create subscription for tenant
+ * @access SuperAdmin
+ */
+router.post('/subscriptions', superAdminController.createSubscription.bind(superAdminController));
+
+/**
+ * @route GET /api/superadmin/subscriptions/analytics
+ * @desc Get subscription analytics
+ * @access SuperAdmin
+ */
+router.get('/subscriptions/analytics', superAdminController.getSubscriptionAnalytics.bind(superAdminController));
+
+/**
+ * @route GET /api/superadmin/subscriptions/expiring
+ * @desc Get expiring subscriptions
+ * @access SuperAdmin
+ */
+router.get('/subscriptions/expiring', superAdminController.getExpiringSubscriptions.bind(superAdminController));
+
+/**
+ * Get all tenants with usage statistics
+ * GET /api/superadmin/tenants/usage/all
+ */
+router.get('/tenants/usage/all', superAdminController.getAllTenantsUsage.bind(superAdminController));
+
+/**
+ * Get tenant usage statistics
+ * GET /api/superadmin/tenants/:tenantId/usage
+ */
+router.get('/tenants/:tenantId/usage', superAdminController.getTenantUsage.bind(superAdminController));
+
+/**
+ * Get tenant invoices
+ * GET /api/superadmin/tenants/:tenantId/invoices
+ */
+router.get('/tenants/:tenantId/invoices', superAdminController.getTenantInvoices.bind(superAdminController));
+
+/**
+ * Update subscription pricing (manual override)
+ * PATCH /api/superadmin/subscriptions/:tenantId/pricing
+ */
+router.patch('/subscriptions/:tenantId/pricing', superAdminController.updateSubscriptionPricing.bind(superAdminController));
+
+/**
+ * @route GET /api/superadmin/subscriptions/:tenantId
+ * @desc Get subscription details with usage
+ * @access SuperAdmin
+ */
+router.get('/subscriptions/:tenantId', superAdminController.getSubscriptionDetails.bind(superAdminController));
+
+/**
+ * @route PUT /api/superadmin/subscriptions/:tenantId
+ * @desc Update subscription
+ * @access SuperAdmin
+ */
+router.put('/subscriptions/:tenantId', superAdminController.updateSubscription.bind(superAdminController));
+
+/**
+ * @route DELETE /api/superadmin/subscriptions/:subscriptionId
+ * @desc Delete subscription
+ * @access SuperAdmin
+ */
+router.delete('/subscriptions/:subscriptionId', superAdminController.deleteSubscription.bind(superAdminController));
+
+/**
+ * @route POST /api/superadmin/subscriptions/:tenantId/renew
+ * @desc Renew subscription
+ * @access SuperAdmin
+ */
+router.post('/subscriptions/:tenantId/renew', superAdminController.renewSubscription.bind(superAdminController));
+
+/**
+ * @route POST /api/superadmin/subscriptions/:tenantId/cancel
+ * @desc Cancel subscription
+ * @access SuperAdmin
+ */
+router.post('/subscriptions/:tenantId/cancel', superAdminController.cancelSubscription.bind(superAdminController));
+
+/**
+ * @route POST /api/superadmin/subscriptions/:tenantId/suspend
+ * @desc Suspend subscription
+ * @access SuperAdmin
+ */
+router.post('/subscriptions/:tenantId/suspend', superAdminController.suspendSubscription.bind(superAdminController));
+
+/**
+ * @route POST /api/superadmin/subscriptions/:tenantId/reactivate
+ * @desc Reactivate subscription
+ * @access SuperAdmin
+ */
+router.post('/subscriptions/:tenantId/reactivate', superAdminController.reactivateSubscription.bind(superAdminController));
+
+/**
+ * @route GET /api/superadmin/subscriptions/:tenantId/suggest
+ * @desc Suggest plan for tenant based on usage
+ * @access SuperAdmin
+ */
+router.get('/subscriptions/:tenantId/suggest', superAdminController.suggestPlan.bind(superAdminController));
+
 export default router;

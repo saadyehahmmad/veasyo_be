@@ -63,9 +63,6 @@ async function seed() {
         name: "McDonald's",
         slug: 'mcdonalds',
         subdomain: 'mcdonalds',
-        plan: 'premium',
-        maxTables: 50,
-        maxUsers: 20,
         active: true,
         logoUrl:
           'https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/McDonald%27s_Golden_Arches.svg/200px-McDonald%27s_Golden_Arches.svg.png',
@@ -82,9 +79,6 @@ async function seed() {
         name: 'Starbucks Coffee',
         slug: 'starbucks',
         subdomain: 'starbucks',
-        plan: 'basic',
-        maxTables: 20,
-        maxUsers: 10,
         active: true,
         logoUrl:
           'https://upload.wikimedia.org/wikipedia/en/thumb/d/d3/Starbucks_Corporation_Logo_2011.svg/200px-Starbucks_Corporation_Logo_2011.svg.png',
@@ -101,9 +95,6 @@ async function seed() {
         name: 'Pizza Hut',
         slug: 'pizzahut',
         subdomain: 'pizzahut',
-        plan: 'free',
-        maxTables: 10,
-        maxUsers: 5,
         active: true,
         logoUrl:
           'https://upload.wikimedia.org/wikipedia/en/thumb/d/d2/Pizza_Hut_logo.svg/200px-Pizza_Hut_logo.svg.png',
@@ -120,9 +111,6 @@ async function seed() {
         name: 'Oula Lounge',
         slug: 'oula-lounge',
         subdomain: 'oula-lounge',
-        plan: 'premium',
-        maxTables: 25,
-        maxUsers: 15,
         active: true,
         logoUrl: 'https://images.deliveryhero.io/image/talabat/restaurants/logo_10638754881924874977.jpg?width=180',
         primaryColor: '#004d40',
@@ -136,6 +124,14 @@ async function seed() {
       },
     ];
 
+    // Map tenant slugs to subscription data
+    const subscriptionDataMap: Record<string, { plan: string; maxTables: number; maxUsers: number }> = {
+      'mcdonalds': { plan: 'premium', maxTables: 50, maxUsers: 20 },
+      'starbucks': { plan: 'basic', maxTables: 20, maxUsers: 10 },
+      'pizzahut': { plan: 'free', maxTables: 10, maxUsers: 5 },
+      'oula-lounge': { plan: 'premium', maxTables: 25, maxUsers: 15 },
+    };
+
     const createdTenants = [];
 
     for (const tenantData of tenantsData) {
@@ -148,10 +144,10 @@ async function seed() {
       if (existing.length === 0) {
         const [tenant] = await db.insert(tenants).values(tenantData).returning();
 
-        createdTenants.push(tenant);
+        createdTenants.push({ tenant, subscriptionData: subscriptionDataMap[tenantData.slug] });
         logger.info(`✅ Created tenant: ${tenant.name}`);
       } else {
-        createdTenants.push(existing[0]);
+        createdTenants.push({ tenant: existing[0], subscriptionData: subscriptionDataMap[tenantData.slug] });
         logger.info(`✅ Tenant already exists: ${existing[0].name}`);
       }
     }
@@ -161,7 +157,7 @@ async function seed() {
     // ============================================
     logger.info('\n📌 Creating subscriptions...');
 
-    for (const tenant of createdTenants) {
+    for (const { tenant, subscriptionData } of createdTenants) {
       const existingSub = await db
         .select()
         .from(subscriptions)
@@ -170,17 +166,19 @@ async function seed() {
 
       if (existingSub.length === 0) {
         const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + (tenant.plan === 'free' ? 1 : 12));
+        endDate.setMonth(endDate.getMonth() + (subscriptionData.plan === 'free' ? 1 : 12));
 
         await db.insert(subscriptions).values({
           tenantId: tenant.id,
-          plan: tenant.plan,
+          plan: subscriptionData.plan,
           status: 'active',
           startDate: new Date(),
           endDate: endDate,
-          amount: tenant.plan === 'premium' ? 9900 : tenant.plan === 'basic' ? 4900 : 0,
+          amount: subscriptionData.plan === 'premium' ? 9900 : subscriptionData.plan === 'basic' ? 4900 : 0, // in cents: $99 or $49
           currency: 'USD',
-          paymentMethod: tenant.plan !== 'free' ? 'credit_card' : null,
+          paymentMethod: subscriptionData.plan !== 'free' ? 'credit_card' : null,
+          maxTables: subscriptionData.maxTables,
+          maxUsers: subscriptionData.maxUsers,
         });
 
         logger.info(`✅ Created subscription for ${tenant.name}`);
@@ -194,7 +192,8 @@ async function seed() {
     // ============================================
     logger.info('\n📌 Creating tenant users...');
 
-    for (const tenant of createdTenants) {
+    for (const item of createdTenants) {
+      const tenant = item.tenant;
       // Create admin user
       const adminEmail = `admin@${tenant.slug}.com`;
       const existingAdmin = await db
@@ -255,7 +254,8 @@ async function seed() {
     // ============================================
     logger.info('\n📌 Creating tables...');
 
-    for (const tenant of createdTenants) {
+    for (const item of createdTenants) {
+      const tenant = item.tenant;
       const existingTables = await db
         .select()
         .from(tables)
@@ -263,8 +263,15 @@ async function seed() {
         .limit(1);
 
       if (existingTables.length === 0) {
+        // Get subscription to determine number of tables
+        const [subscription] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.tenantId, tenant.id))
+          .limit(1);
+        
+        const numTables = subscription?.maxTables ? Math.min(subscription.maxTables, 15) : 5;
         const tablesToCreate = [];
-        const numTables = tenant.plan === 'premium' ? 15 : tenant.plan === 'basic' ? 10 : 5;
 
         for (let i = 1; i <= numTables; i++) {
           // Format table numbers with leading zeros for better sorting (T-01, T-02, etc.)
@@ -458,7 +465,8 @@ async function seed() {
 
     let totalRequestTypesCreated = 0;
 
-    for (const tenant of createdTenants) {
+    for (const item of createdTenants) {
+      const tenant = item.tenant;
       for (const requestType of defaultRequestTypes) {
         const existing = await db
           .select()
@@ -493,7 +501,8 @@ async function seed() {
 
     let totalRequestsCreated = 0;
 
-    for (const tenant of createdTenants) {
+    for (const item of createdTenants) {
+      const tenant = item.tenant;
       // Get tenant's tables and request types
       const tenantTables = await db
         .select()
@@ -584,7 +593,8 @@ async function seed() {
     let totalAuditLogsCreated = 0;
 
     if (superAdmin.length > 0) {
-      for (const tenant of createdTenants) {
+      for (const item of createdTenants) {
+        const tenant = item.tenant;
         // Log tenant creation
         await db.insert(auditLogs).values({
           userId: superAdmin[0].id,
@@ -594,7 +604,7 @@ async function seed() {
           entityId: tenant.id,
           changes: {
             before: null,
-            after: { name: tenant.name, slug: tenant.slug, plan: tenant.plan },
+            after: { name: tenant.name, slug: tenant.slug },
           },
           ipAddress: '127.0.0.1',
           userAgent: 'Seed Script',
@@ -610,7 +620,7 @@ async function seed() {
           entityId: tenant.id,
           changes: {
             before: null,
-            after: { plan: tenant.plan, status: 'active' },
+            after: { status: 'active' },
           },
           ipAddress: '127.0.0.1',
           userAgent: 'Seed Script',
@@ -640,7 +650,8 @@ async function seed() {
     logger.info('      Password: SuperAdmin123!');
     
     logger.info('\n   👨‍💼 Tenant Admins:');
-    for (const tenant of createdTenants) {
+    for (const item of createdTenants) {
+      const tenant = item.tenant;
       logger.info(`      ${tenant.name}:`);
       logger.info(`         Email: admin@${tenant.slug}.com`);
       logger.info(`         Password: Admin123!`);
@@ -651,7 +662,8 @@ async function seed() {
     logger.info('      Password: Waiter123!');
     
     logger.info('\n🌐 Tenant Access:');
-    for (const tenant of createdTenants) {
+    for (const item of createdTenants) {
+      const tenant = item.tenant;
       logger.info(`   ${tenant.name}: http://${tenant.subdomain}.localhost:3000`);
     }
     

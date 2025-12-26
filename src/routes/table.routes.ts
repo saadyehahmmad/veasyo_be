@@ -3,6 +3,7 @@ import { TableController } from '../controllers/table.controller';
 import { authenticate, optionalAuthenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 import { extractTenant } from '../middleware/tenant';
+import { checkTableLimit } from '../middleware/subscription-limits';
 
 const router = Router();
 const tableController = new TableController();
@@ -326,6 +327,7 @@ router.get(
 router.post(
   '/',
   requireRole(['admin', 'superadmin']),
+  checkTableLimit, // Check subscription limit before creating table
   tableController.createTable.bind(tableController),
 );
 

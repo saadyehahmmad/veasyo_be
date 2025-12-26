@@ -3,9 +3,12 @@ import { config } from '../config/environment';
 import logger from '../utils/logger';
 import * as os from 'os';
 import { AnalyticsService } from './analytics.service';
+import { db } from '../database/db';
+import { tenants } from '../database/schema';
+import { eq } from 'drizzle-orm';
 
 class LicenseService {
-  private licenseEnabled: boolean = true; // Start enabled by default
+  private globalLicenseEnabled: boolean = true; // Global system license (fallback)
   private telegramBot?: TelegramBot;
   private analyticsService: AnalyticsService;
 
@@ -16,38 +19,118 @@ class LicenseService {
     if (botToken) {
       this.telegramBot = new TelegramBot(botToken, { polling: true });
       this.setupTelegramCommands();
-      logger.info('🤖 Telegram bot initialized for license control');
+      logger.info('🤖 Telegram bot initialized for per-tenant license control');
     } else {
       logger.warn('⚠️ Telegram bot token not provided, bot control disabled');
     }
   }
 
   /**
-   * Validates license - simply returns the current enabled status
+   * Validates license for a specific tenant
    */
-  async validateLicense(): Promise<boolean> {
-    return this.licenseEnabled;
+  async validateLicense(tenantId?: string): Promise<boolean> {
+    // If no tenant specified, return global status
+    if (!tenantId) {
+      return this.globalLicenseEnabled;
+    }
+
+    try {
+      // Check tenant-specific license status
+      const [tenant] = await db
+        .select({ licenseEnabled: tenants.licenseEnabled })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+
+      if (!tenant) {
+        logger.warn(`Tenant ${tenantId} not found for license validation`);
+        return false;
+      }
+
+      return tenant.licenseEnabled;
+    } catch (error) {
+      logger.error('Error validating tenant license:', error);
+      return false;
+    }
   }
 
   /**
-   * Checks if license is currently enabled
+   * Checks if license is currently enabled for a tenant
    */
-  isLicenseValid(): boolean {
-    return this.licenseEnabled;
+  async isLicenseValid(tenantId?: string): Promise<boolean> {
+    return this.validateLicense(tenantId);
   }
 
   /**
-   * Gets license status for health checks
+   * Gets license status for health checks (global or tenant-specific)
    */
-  getLicenseStatus(): { status: string; enabled: boolean } {
+  async getLicenseStatus(tenantId?: string): Promise<{ status: string; enabled: boolean }> {
+    const enabled = await this.validateLicense(tenantId);
     return {
-      status: this.licenseEnabled ? 'active' : 'disabled',
-      enabled: this.licenseEnabled,
+      status: enabled ? 'active' : 'disabled',
+      enabled,
     };
   }
 
   /**
-   * Sets up Telegram bot commands for license control
+   * Enable license for a specific tenant
+   */
+  async enableTenantLicense(tenantId: string): Promise<boolean> {
+    try {
+      await db
+        .update(tenants)
+        .set({ licenseEnabled: true })
+        .where(eq(tenants.id, tenantId));
+      
+      logger.info(`License enabled for tenant: ${tenantId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Error enabling license for tenant ${tenantId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Disable license for a specific tenant
+   */
+  async disableTenantLicense(tenantId: string): Promise<boolean> {
+    try {
+      await db
+        .update(tenants)
+        .set({ licenseEnabled: false })
+        .where(eq(tenants.id, tenantId));
+      
+      logger.info(`License disabled for tenant: ${tenantId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Error disabling license for tenant ${tenantId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all tenants with their license status
+   */
+  async getAllTenantsLicenseStatus(): Promise<Array<{ id: string; name: string; subdomain: string | null; licenseEnabled: boolean }>> {
+    try {
+      const allTenants = await db
+        .select({
+          id: tenants.id,
+          name: tenants.name,
+          subdomain: tenants.subdomain,
+          licenseEnabled: tenants.licenseEnabled,
+        })
+        .from(tenants);
+      
+      return allTenants;
+    } catch (error) {
+      logger.error('Error getting tenants license status:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Sets up Telegram bot commands for per-tenant license control
    */
   private setupTelegramCommands(): void {
     if (!this.telegramBot) return;
@@ -57,43 +140,121 @@ class LicenseService {
       logger.info(`🤖 Telegram message from chat ID: ${msg.chat.id}, username: ${msg.from?.username || 'unknown'}, text: "${msg.text}"`);
     });
 
-    // /status command - Get current license status
-    this.telegramBot.onText(/\/status/, (msg) => {
+    // /list command - List all tenants with their license status
+    this.telegramBot.onText(/\/list/, async (msg) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
         this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
-      const status = this.getLicenseStatus();
-      const message = `License Status
-Status: ${status.status.toUpperCase()}
-Enabled: ${status.enabled ? 'Yes' : 'No'}`;
+      try {
+        const tenantsList = await this.getAllTenantsLicenseStatus();
+        
+        if (tenantsList.length === 0) {
+          this.telegramBot!.sendMessage(msg.chat.id, 'No tenants found');
+          return;
+        }
 
-      this.telegramBot!.sendMessage(msg.chat.id, message);
+        let message = `📋 All Tenants (${tenantsList.length}):\n\n`;
+        
+        for (const tenant of tenantsList) {
+          const status = tenant.licenseEnabled ? '✅ Enabled' : '❌ Disabled';
+          const subdomain = tenant.subdomain || 'N/A';
+          message += `• ${tenant.name}\n`;
+          message += `  ID: ${tenant.id}\n`;
+          message += `  Subdomain: ${subdomain}\n`;
+          message += `  Status: ${status}\n\n`;
+        }
+
+        // Split message if too long
+        const parts = this.splitMessage(message);
+        for (const part of parts) {
+          await this.telegramBot!.sendMessage(msg.chat.id, part);
+        }
+      } catch (error) {
+        logger.error('Error listing tenants:', error);
+        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to list tenants');
+      }
     });
 
-    // /enable command - Enable license
-    this.telegramBot.onText(/\/enable/, (msg) => {
+    // /status <tenant_id> command - Get license status for a specific tenant
+    this.telegramBot.onText(/\/status(?:\s+(.+))?/, async (msg, match) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
         this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
-      this.licenseEnabled = true;
-      this.telegramBot!.sendMessage(msg.chat.id, 'License enabled');
-      logger.info(`License enabled via Telegram by chat ID: ${msg.chat.id}`);
+      const tenantId = match?.[1]?.trim();
+      
+      if (!tenantId) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /status <tenant_id>\nUse /list to see all tenant IDs');
+        return;
+      }
+
+      try {
+        const status = await this.getLicenseStatus(tenantId);
+        const message = `License Status for Tenant\n\nTenant ID: ${tenantId}\nStatus: ${status.status.toUpperCase()}\nEnabled: ${status.enabled ? 'Yes ✅' : 'No ❌'}`;
+        this.telegramBot!.sendMessage(msg.chat.id, message);
+      } catch (error) {
+        logger.error('Error getting tenant status:', error);
+        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to get tenant status');
+      }
     });
 
-    // /disable command - Disable license
-    this.telegramBot.onText(/\/disable/, (msg) => {
+    // /enable <tenant_id> command - Enable license for a specific tenant
+    this.telegramBot.onText(/\/enable(?:\s+(.+))?/, async (msg, match) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
         this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
-      this.licenseEnabled = false;
-      this.telegramBot!.sendMessage(msg.chat.id, 'License disabled');
-      logger.info(`License disabled via Telegram by chat ID: ${msg.chat.id}`);
+      const tenantId = match?.[1]?.trim();
+      
+      if (!tenantId) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /enable <tenant_id>\nUse /list to see all tenant IDs');
+        return;
+      }
+
+      try {
+        const success = await this.enableTenantLicense(tenantId);
+        if (success) {
+          this.telegramBot!.sendMessage(msg.chat.id, `✅ License enabled for tenant: ${tenantId}`);
+          logger.info(`License enabled for tenant ${tenantId} via Telegram by chat ID: ${msg.chat.id}`);
+        } else {
+          this.telegramBot!.sendMessage(msg.chat.id, `❌ Failed to enable license for tenant: ${tenantId}`);
+        }
+      } catch (error) {
+        logger.error('Error enabling tenant license:', error);
+        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to enable tenant license');
+      }
+    });
+
+    // /disable <tenant_id> command - Disable license for a specific tenant
+    this.telegramBot.onText(/\/disable(?:\s+(.+))?/, async (msg, match) => {
+      if (!this.isAdmin(msg.chat.id.toString())) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        return;
+      }
+
+      const tenantId = match?.[1]?.trim();
+      
+      if (!tenantId) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /disable <tenant_id>\nUse /list to see all tenant IDs');
+        return;
+      }
+
+      try {
+        const success = await this.disableTenantLicense(tenantId);
+        if (success) {
+          this.telegramBot!.sendMessage(msg.chat.id, `❌ License disabled for tenant: ${tenantId}`);
+          logger.info(`License disabled for tenant ${tenantId} via Telegram by chat ID: ${msg.chat.id}`);
+        } else {
+          this.telegramBot!.sendMessage(msg.chat.id, `❌ Failed to disable license for tenant: ${tenantId}`);
+        }
+      } catch (error) {
+        logger.error('Error disabling tenant license:', error);
+        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to disable tenant license');
+      }
     });
 
     // /analytics command - Get system analytics
@@ -199,18 +360,30 @@ Subscriptions:
         return;
       }
 
-      const helpMessage = `License Control Bot Commands
+      const helpMessage = `🤖 Per-Tenant License Control Bot
 
-/status - Get current license status
-/enable - Enable license
-/disable - Disable license
+📋 Tenant Management:
+/list - List all tenants with license status
+/status <tenant_id> - Get license status for a tenant
+/enable <tenant_id> - Enable license for a tenant
+/disable <tenant_id> - Disable license for a tenant
+
+📊 Analytics & System:
 /analytics - Get system analytics
 /system - Get system/OS information
 /tenants - Get tenant analytics overview
 /help - Show this help message
 
-Notes:
-- All commands require admin authorization`;
+💡 Usage Examples:
+/list
+/status abc-123-def-456
+/enable abc-123-def-456
+/disable abc-123-def-456
+
+⚠️ Notes:
+- All commands require admin authorization
+- Use /list to get tenant IDs
+- License control is now per-tenant`;
 
       this.telegramBot!.sendMessage(msg.chat.id, helpMessage);
     });
@@ -259,10 +432,10 @@ Notes:
   }
 
   /**
-   * Forces revalidation (no-op in simple mode)
+   * Forces revalidation for a tenant
    */
-  async forceRevalidate(): Promise<boolean> {
-    return this.licenseEnabled;
+  async forceRevalidate(tenantId?: string): Promise<boolean> {
+    return this.validateLicense(tenantId);
   }
 
   /**
