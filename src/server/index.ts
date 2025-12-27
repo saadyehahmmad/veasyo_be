@@ -1,4 +1,7 @@
-import 'dotenv/config'; // Load env vars before other imports
+// Load env vars before other imports
+import dotenv from 'dotenv';
+dotenv.config();
+
 import logger from '../utils/logger';
 import { config } from '../config/environment';
 import { createExpressApp, createHTTPServer, configureErrorHandling } from './app.config';

@@ -51,13 +51,20 @@ export class SuperAdminController {
       const tenantsWithSubs = await this._superAdminService.getAllTenantsWithSubscriptions();
 
       // Check for subscription warnings (data already minimal from service)
-      const tenantsWithWarnings = await Promise.all(
+      // Handle errors per tenant so one failure doesn't break the entire list
+      const tenantsWithWarnings = await Promise.allSettled(
         tenantsWithSubs.map(async ({ tenant, subscription }) => {
           let warning = null;
 
           if (subscription?.id) {
-            const status = await this._subscriptionService.isSubscriptionActive(tenant.id);
-            warning = status.warning || null;
+            try {
+              const status = await this._subscriptionService.isSubscriptionActive(tenant.id);
+              warning = status.warning || null;
+            } catch (error) {
+              logger.error(`Error checking subscription status for tenant ${tenant.id}:`, error);
+              // Continue without warning if check fails
+              warning = null;
+            }
           }
 
           return {
@@ -68,7 +75,25 @@ export class SuperAdminController {
         }),
       );
 
-      res.json({ tenants: tenantsWithWarnings });
+      // Map settled results, filtering out any failures
+      const successfulTenants = tenantsWithWarnings
+        .map((result, index) => {
+          if (result.status === 'fulfilled') {
+            return result.value;
+          } else {
+            // Log the error but still return the tenant data without warning
+            logger.error(`Error processing tenant at index ${index}:`, result.reason);
+            const { tenant, subscription } = tenantsWithSubs[index];
+            return {
+              tenant,
+              subscription,
+              warning: null,
+            };
+          }
+        })
+        .filter(Boolean); // Remove any null/undefined entries
+
+      res.json({ tenants: successfulTenants });
     } catch (error) {
       logger.error('Get all tenants error:', error);
       res.status(status.INTERNAL_SERVER_ERROR).json({

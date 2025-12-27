@@ -143,7 +143,7 @@ class LicenseService {
     // /list command - List all tenants with their license status
     this.telegramBot.onText(/\/list/, async (msg) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
@@ -151,7 +151,7 @@ class LicenseService {
         const tenantsList = await this.getAllTenantsLicenseStatus();
         
         if (tenantsList.length === 0) {
-          this.telegramBot!.sendMessage(msg.chat.id, 'No tenants found');
+          await this.safeSendMessage(msg.chat.id, 'No tenants found');
           return;
         }
 
@@ -169,98 +169,98 @@ class LicenseService {
         // Split message if too long
         const parts = this.splitMessage(message);
         for (const part of parts) {
-          await this.telegramBot!.sendMessage(msg.chat.id, part);
+          await this.safeSendMessage(msg.chat.id, part);
         }
       } catch (error) {
         logger.error('Error listing tenants:', error);
-        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to list tenants');
+        await this.safeSendMessage(msg.chat.id, 'Failed to list tenants');
       }
     });
 
     // /status <tenant_id> command - Get license status for a specific tenant
     this.telegramBot.onText(/\/status(?:\s+(.+))?/, async (msg, match) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
       const tenantId = match?.[1]?.trim();
       
       if (!tenantId) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /status <tenant_id>\nUse /list to see all tenant IDs');
+        await this.safeSendMessage(msg.chat.id, 'Usage: /status <tenant_id>\nUse /list to see all tenant IDs');
         return;
       }
 
       try {
         const status = await this.getLicenseStatus(tenantId);
         const message = `License Status for Tenant\n\nTenant ID: ${tenantId}\nStatus: ${status.status.toUpperCase()}\nEnabled: ${status.enabled ? 'Yes ✅' : 'No ❌'}`;
-        this.telegramBot!.sendMessage(msg.chat.id, message);
+        await this.safeSendMessage(msg.chat.id, message);
       } catch (error) {
         logger.error('Error getting tenant status:', error);
-        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to get tenant status');
+        await this.safeSendMessage(msg.chat.id, 'Failed to get tenant status');
       }
     });
 
     // /enable <tenant_id> command - Enable license for a specific tenant
     this.telegramBot.onText(/\/enable(?:\s+(.+))?/, async (msg, match) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
       const tenantId = match?.[1]?.trim();
       
       if (!tenantId) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /enable <tenant_id>\nUse /list to see all tenant IDs');
+        await this.safeSendMessage(msg.chat.id, 'Usage: /enable <tenant_id>\nUse /list to see all tenant IDs');
         return;
       }
 
       try {
         const success = await this.enableTenantLicense(tenantId);
         if (success) {
-          this.telegramBot!.sendMessage(msg.chat.id, `✅ License enabled for tenant: ${tenantId}`);
+          await this.safeSendMessage(msg.chat.id, `✅ License enabled for tenant: ${tenantId}`);
           logger.info(`License enabled for tenant ${tenantId} via Telegram by chat ID: ${msg.chat.id}`);
         } else {
-          this.telegramBot!.sendMessage(msg.chat.id, `❌ Failed to enable license for tenant: ${tenantId}`);
+          await this.safeSendMessage(msg.chat.id, `❌ Failed to enable license for tenant: ${tenantId}`);
         }
       } catch (error) {
         logger.error('Error enabling tenant license:', error);
-        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to enable tenant license');
+        await this.safeSendMessage(msg.chat.id, 'Failed to enable tenant license');
       }
     });
 
     // /disable <tenant_id> command - Disable license for a specific tenant
     this.telegramBot.onText(/\/disable(?:\s+(.+))?/, async (msg, match) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
       const tenantId = match?.[1]?.trim();
       
       if (!tenantId) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /disable <tenant_id>\nUse /list to see all tenant IDs');
+        await this.safeSendMessage(msg.chat.id, 'Usage: /disable <tenant_id>\nUse /list to see all tenant IDs');
         return;
       }
 
       try {
         const success = await this.disableTenantLicense(tenantId);
         if (success) {
-          this.telegramBot!.sendMessage(msg.chat.id, `❌ License disabled for tenant: ${tenantId}`);
+          await this.safeSendMessage(msg.chat.id, `❌ License disabled for tenant: ${tenantId}`);
           logger.info(`License disabled for tenant ${tenantId} via Telegram by chat ID: ${msg.chat.id}`);
         } else {
-          this.telegramBot!.sendMessage(msg.chat.id, `❌ Failed to disable license for tenant: ${tenantId}`);
+          await this.safeSendMessage(msg.chat.id, `❌ Failed to disable license for tenant: ${tenantId}`);
         }
       } catch (error) {
         logger.error('Error disabling tenant license:', error);
-        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to disable tenant license');
+        await this.safeSendMessage(msg.chat.id, 'Failed to disable tenant license');
       }
     });
 
     // /analytics command - Get system analytics
     this.telegramBot.onText(/\/analytics/, async (msg) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
@@ -278,17 +278,17 @@ Memory: ${this.formatBytes(os.totalmem() - os.freemem())} / ${this.formatBytes(o
 CPU Cores: ${os.cpus().length}
 System Time: ${new Date().toLocaleString()}`;
 
-        this.telegramBot!.sendMessage(msg.chat.id, analyticsMessage);
+        await this.safeSendMessage(msg.chat.id, analyticsMessage);
       } catch (error) {
         logger.error('Error getting analytics:', error);
-        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to get analytics');
+        await this.safeSendMessage(msg.chat.id, 'Failed to get analytics');
       }
     });
 
     // /system command - Get OS/system details
-    this.telegramBot.onText(/\/system/, (msg) => {
+    this.telegramBot.onText(/\/system/, async (msg) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
@@ -303,13 +303,13 @@ Uptime: ${this.formatTime(os.uptime())}
 Node.js: ${process.version}
 PID: ${process.pid}`;
 
-      this.telegramBot!.sendMessage(msg.chat.id, systemInfo);
+      await this.safeSendMessage(msg.chat.id, systemInfo);
     });
 
     // /tenants command - Get tenant analytics
     this.telegramBot.onText(/\/tenants/, async (msg) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
@@ -346,17 +346,17 @@ Subscriptions:
 - Active: ${platformAnalytics.subscriptions.active}
 - Expired: ${platformAnalytics.subscriptions.expired}`;
 
-        this.telegramBot!.sendMessage(msg.chat.id, tenantsMessage);
+        await this.safeSendMessage(msg.chat.id, tenantsMessage);
       } catch (error) {
         logger.error('Error getting tenant analytics:', error);
-        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to get tenant analytics');
+        await this.safeSendMessage(msg.chat.id, 'Failed to get tenant analytics');
       }
     });
 
     // /help command - Show available commands
-    this.telegramBot.onText(/\/help/, (msg) => {
+    this.telegramBot.onText(/\/help/, async (msg) => {
       if (!this.isAdmin(msg.chat.id.toString())) {
-        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        await this.safeSendMessage(msg.chat.id, 'Unauthorized');
         return;
       }
 
@@ -385,7 +385,7 @@ Subscriptions:
 - Use /list to get tenant IDs
 - License control is now per-tenant`;
 
-      this.telegramBot!.sendMessage(msg.chat.id, helpMessage);
+      await this.safeSendMessage(msg.chat.id, helpMessage);
     });
 
     // Handle errors
@@ -436,6 +436,20 @@ Subscriptions:
    */
   async forceRevalidate(tenantId?: string): Promise<boolean> {
     return this.validateLicense(tenantId);
+  }
+
+  /**
+   * Safely send a Telegram message with error handling
+   */
+  private async safeSendMessage(chatId: number, message: string): Promise<void> {
+    if (!this.telegramBot) return;
+    
+    try {
+      await this.telegramBot.sendMessage(chatId, message);
+    } catch (error) {
+      logger.error(`Failed to send Telegram message to chat ${chatId}:`, error);
+      // Don't throw - we want to continue even if Telegram fails
+    }
   }
 
   /**

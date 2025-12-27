@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { SubscriptionService } from './subscription.service';
 import logger from '../utils/logger';
+import { Subscription } from '../database/schema';
 
 const subscriptionService = new SubscriptionService();
 
@@ -29,8 +30,8 @@ export function startSubscriptionCronJobs() {
       if (expiring.length > 0) {
         logger.warn(`⚠️  ${expiring.length} subscriptions expiring within 7 days`);
         // TODO: Send notifications to tenants
-        expiring.forEach((item: any) => {
-          logger.warn(`Expiring soon: Tenant ${item.tenants.name} (${item.tenants.subdomain})`);
+        expiring.forEach((subscription: Subscription) => {
+          logger.warn(`Expiring soon: Tenant ID ${subscription.tenantId} (Subscription ID: ${subscription.id})`);
         });
       } else {
         logger.info('✅ No subscriptions expiring soon');
