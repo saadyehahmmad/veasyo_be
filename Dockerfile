@@ -69,11 +69,13 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files (including package-lock.json for consistent installs)
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+# Use --production flag to install only dependencies (not devDependencies)
+# This ensures joi and other runtime dependencies are installed
+RUN npm install --production
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
