@@ -109,9 +109,45 @@ class LicenseService {
   }
 
   /**
-   * Get all tenants with their license status
+   * Activate tenant (set active to true)
    */
-  async getAllTenantsLicenseStatus(): Promise<Array<{ id: string; name: string; subdomain: string | null; licenseEnabled: boolean }>> {
+  async activateTenant(tenantId: string): Promise<boolean> {
+    try {
+      await db
+        .update(tenants)
+        .set({ active: true })
+        .where(eq(tenants.id, tenantId));
+      
+      logger.info(`Tenant activated: ${tenantId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Error activating tenant ${tenantId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Deactivate tenant (set active to false)
+   */
+  async deactivateTenant(tenantId: string): Promise<boolean> {
+    try {
+      await db
+        .update(tenants)
+        .set({ active: false })
+        .where(eq(tenants.id, tenantId));
+      
+      logger.info(`Tenant deactivated: ${tenantId}`);
+      return true;
+    } catch (error) {
+      logger.error(`Error deactivating tenant ${tenantId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all tenants with their license status and active status
+   */
+  async getAllTenantsLicenseStatus(): Promise<Array<{ id: string; name: string; subdomain: string | null; licenseEnabled: boolean; active: boolean }>> {
     try {
       const allTenants = await db
         .select({
@@ -119,6 +155,7 @@ class LicenseService {
           name: tenants.name,
           subdomain: tenants.subdomain,
           licenseEnabled: tenants.licenseEnabled,
+          active: tenants.active,
         })
         .from(tenants);
       
@@ -158,12 +195,14 @@ class LicenseService {
         let message = `📋 All Tenants (${tenantsList.length}):\n\n`;
         
         for (const tenant of tenantsList) {
-          const status = tenant.licenseEnabled ? '✅ Enabled' : '❌ Disabled';
+          const licenseStatus = tenant.licenseEnabled ? '✅ Enabled' : '❌ Disabled';
+          const activeStatus = tenant.active ? '✅ Active' : '❌ Inactive';
           const subdomain = tenant.subdomain || 'N/A';
           message += `• ${tenant.name}\n`;
           message += `  ID: ${tenant.id}\n`;
           message += `  Subdomain: ${subdomain}\n`;
-          message += `  Status: ${status}\n\n`;
+          message += `  License: ${licenseStatus}\n`;
+          message += `  Active: ${activeStatus}\n\n`;
         }
 
         // Split message if too long
@@ -192,8 +231,19 @@ class LicenseService {
       }
 
       try {
-        const status = await this.getLicenseStatus(tenantId);
-        const message = `License Status for Tenant\n\nTenant ID: ${tenantId}\nStatus: ${status.status.toUpperCase()}\nEnabled: ${status.enabled ? 'Yes ✅' : 'No ❌'}`;
+        const licenseStatus = await this.getLicenseStatus(tenantId);
+        
+        // Get active status
+        const [tenant] = await db
+          .select({ active: tenants.active, name: tenants.name })
+          .from(tenants)
+          .where(eq(tenants.id, tenantId))
+          .limit(1);
+        
+        const activeStatus = tenant?.active ? 'Yes ✅' : 'No ❌';
+        const tenantName = tenant?.name || 'Unknown';
+        
+        const message = `Tenant Status\n\nName: ${tenantName}\nTenant ID: ${tenantId}\n\nLicense:\nStatus: ${licenseStatus.status.toUpperCase()}\nEnabled: ${licenseStatus.enabled ? 'Yes ✅' : 'No ❌'}\n\nActive:\nStatus: ${tenant?.active ? 'Active ✅' : 'Inactive ❌'}\nEnabled: ${activeStatus}`;
         this.telegramBot!.sendMessage(msg.chat.id, message);
       } catch (error) {
         logger.error('Error getting tenant status:', error);
@@ -254,6 +304,62 @@ class LicenseService {
       } catch (error) {
         logger.error('Error disabling tenant license:', error);
         this.telegramBot!.sendMessage(msg.chat.id, 'Failed to disable tenant license');
+      }
+    });
+
+    // /active <tenant_id> command - Activate a specific tenant
+    this.telegramBot.onText(/\/active(?:\s+(.+))?/, async (msg, match) => {
+      if (!this.isAdmin(msg.chat.id.toString())) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        return;
+      }
+
+      const tenantId = match?.[1]?.trim();
+      
+      if (!tenantId) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /active <tenant_id>\nUse /list to see all tenant IDs');
+        return;
+      }
+
+      try {
+        const success = await this.activateTenant(tenantId);
+        if (success) {
+          this.telegramBot!.sendMessage(msg.chat.id, `✅ Tenant activated: ${tenantId}`);
+          logger.info(`Tenant activated ${tenantId} via Telegram by chat ID: ${msg.chat.id}`);
+        } else {
+          this.telegramBot!.sendMessage(msg.chat.id, `❌ Failed to activate tenant: ${tenantId}`);
+        }
+      } catch (error) {
+        logger.error('Error activating tenant:', error);
+        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to activate tenant');
+      }
+    });
+
+    // /inactive <tenant_id> command - Deactivate a specific tenant
+    this.telegramBot.onText(/\/inactive(?:\s+(.+))?/, async (msg, match) => {
+      if (!this.isAdmin(msg.chat.id.toString())) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Unauthorized');
+        return;
+      }
+
+      const tenantId = match?.[1]?.trim();
+      
+      if (!tenantId) {
+        this.telegramBot!.sendMessage(msg.chat.id, 'Usage: /inactive <tenant_id>\nUse /list to see all tenant IDs');
+        return;
+      }
+
+      try {
+        const success = await this.deactivateTenant(tenantId);
+        if (success) {
+          this.telegramBot!.sendMessage(msg.chat.id, `❌ Tenant deactivated: ${tenantId}`);
+          logger.info(`Tenant deactivated ${tenantId} via Telegram by chat ID: ${msg.chat.id}`);
+        } else {
+          this.telegramBot!.sendMessage(msg.chat.id, `❌ Failed to deactivate tenant: ${tenantId}`);
+        }
+      } catch (error) {
+        logger.error('Error deactivating tenant:', error);
+        this.telegramBot!.sendMessage(msg.chat.id, 'Failed to deactivate tenant');
       }
     });
 
@@ -363,10 +469,12 @@ Subscriptions:
       const helpMessage = `🤖 Per-Tenant License Control Bot
 
 📋 Tenant Management:
-/list - List all tenants with license status
+/list - List all tenants with license and active status
 /status <tenant_id> - Get license status for a tenant
 /enable <tenant_id> - Enable license for a tenant
 /disable <tenant_id> - Disable license for a tenant
+/active <tenant_id> - Activate a tenant
+/inactive <tenant_id> - Deactivate a tenant
 
 📊 Analytics & System:
 /analytics - Get system analytics
@@ -379,11 +487,15 @@ Subscriptions:
 /status abc-123-def-456
 /enable abc-123-def-456
 /disable abc-123-def-456
+/active abc-123-def-456
+/inactive abc-123-def-456
 
 ⚠️ Notes:
 - All commands require admin authorization
 - Use /list to get tenant IDs
-- License control is now per-tenant`;
+- License control is now per-tenant
+- /enable/disable control license status
+- /active/inactive control tenant active status`;
 
       this.telegramBot!.sendMessage(msg.chat.id, helpMessage);
     });
